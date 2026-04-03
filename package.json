@@ -1,0 +1,24 @@
+{
+  "name": "@austin/gnosys",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Gnosys memory plugin wrapper for OpenClaw",
+  "type": "module",
+  "scripts": {
+    "check": "tsc -p tsconfig.json --noEmit"
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "peerDependencies": {
+    "openclaw": "2026.4.2"
+  },
+  "devDependencies": {
+    "@sinclair/typebox": "^0.34.41",
+    "@types/node": "^22.14.0",
+    "openclaw": "2026.4.2",
+    "typescript": "^5.8.3"
+  }
+}
