@@ -157,9 +157,9 @@ class MonitoringSystem:
                 if success_row and success_row["rate"]
                 else 0.0,
                 "recent_24h": {
-                    "total": recent[0]["total"] if recent else 0,
+                    "total": recent[0]["total"] if recent and recent[0] else 0,
                     "succeeded": recent[0]["success_count"]
-                    if recent and recent[0]["success_count"]
+                    if recent and recent[0] and recent[0]["success_count"] is not None
                     else 0,
                 },
                 "tool_usage": tool_usage,
@@ -226,11 +226,14 @@ class MonitoringSystem:
                 "total_tasks": total["total"],
                 "active_tasks": total["active"] if total["active"] else 0,
                 "due_now": due["due"] if due else 0,
-                "executions_24h": recent[0]["total"] if recent else 0,
+                "executions_24h": recent[0]["total"] if recent and recent[0] else 0,
                 "success_rate_24h": round(
                     recent[0]["succeeded"] / recent[0]["total"], 2
                 )
-                if recent and recent[0]["total"] and recent[0]["succeeded"]
+                if recent
+                and recent[0]
+                and recent[0]["total"]
+                and recent[0]["succeeded"] is not None
                 else 0.0,
             }
         except Exception as e:

@@ -249,6 +249,16 @@ class SkillSystem:
 
         skills = []
         for row in rows:
+            last_used = row["last_used_at"]
+            last_used_at = None
+            if last_used:
+                try:
+                    last_used_at = datetime.fromisoformat(last_used).replace(
+                        tzinfo=None
+                    )
+                except (ValueError, TypeError):
+                    last_used_at = None
+
             skills.append(
                 SkillRecord(
                     id=row["id"],
@@ -265,12 +275,7 @@ class SkillSystem:
                     trigger_count=row["trigger_count"],
                     created_at=datetime.fromisoformat(row["created_at"]),
                     updated_at=datetime.fromisoformat(row["updated_at"]),
-                    # Normalize to naive datetime to avoid timezone issues
-                    last_used_at=datetime.fromisoformat(row["last_used_at"]).replace(
-                        tzinfo=None
-                    )
-                    if row["last_used_at"]
-                    else None,
+                    last_used_at=last_used_at,
                 )
             )
 
@@ -291,6 +296,14 @@ class SkillSystem:
         if not row:
             return None
 
+        last_used = row["last_used_at"]
+        last_used_at = None
+        if last_used:
+            try:
+                last_used_at = datetime.fromisoformat(last_used).replace(tzinfo=None)
+            except (ValueError, TypeError):
+                last_used_at = None
+
         return SkillRecord(
             id=row["id"],
             name=row["name"],
@@ -306,9 +319,7 @@ class SkillSystem:
             trigger_count=row["trigger_count"],
             created_at=datetime.fromisoformat(row["created_at"]),
             updated_at=datetime.fromisoformat(row["updated_at"]),
-            last_used_at=datetime.fromisoformat(row["last_used_at"])
-            if row["last_used_at"]
-            else None,
+            last_used_at=last_used_at,
         )
 
     async def match_skill(self, request: SkillMatchRequest) -> SkillMatchResponse:

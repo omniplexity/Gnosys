@@ -425,6 +425,6 @@ class Scheduler:
             "due_now": due,
             "executions_24h": exec_24h,
             "success_rate_24h": round(success_24h / exec_24h, 2)
-            if exec_24h > 0
+            if exec_24h and success_24h is not None and exec_24h > 0
             else 0.0,
         }
