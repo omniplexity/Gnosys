@@ -34,12 +34,12 @@ Gnosys is a unified intelligence framework for OpenClaw combining:
 
 ## Documentation
 
-- **[docs/README.md](docs/README.md)** - Install and run guide
-- **[docs/IMPLEMENTATION.md](docs/IMPLEMENTATION.md)** - Implementation summary
-- **[docs/INDEX.md](docs/INDEX.md)** - Documentation index
-- **[docs/guides/CONFIGURATION.md](docs/guides/CONFIGURATION.md)** - Full configuration
-- **[docs/api/ENDPOINTS.md](docs/api/ENDPOINTS.md)** - API endpoint reference
-- **[docs/SPEC.md](docs/SPEC.md)** - Full product spec
+- **[README.md](../README.md)** - Install and run guide
+- **[IMPLEMENTATION.md](./IMPLEMENTATION.md)** - Implementation summary
+- **[INDEX.md](./INDEX.md)** - Documentation index
+- **[guides/CONFIGURATION.md](./guides/CONFIGURATION.md)** - Full configuration
+- **[api/ENDPOINTS.md](./api/ENDPOINTS.md)** - API endpoint reference
+- **[SPEC.md](./SPEC.md)** - Full product spec
 
 ## Subsystems
 
@@ -51,9 +51,9 @@ Gnosys is a unified intelligence framework for OpenClaw combining:
 | 4 | [Self-Learning Loop](docs/SPEC.md#subsystem-self-learning-loop) | ✅ Implemented | Observe → Analyze → Adapt cycle, trajectory logging |
 | 5 | [Scheduled Automation](docs/SPEC.md#subsystem-scheduled-automation) | ✅ Implemented v0.8 | Cron scheduler, autonomous task execution |
 | 6 | [Model-Agnostic LLM](docs/SPEC.md#subsystem-model-agnostic-llm-integration) | ✅ Implemented | Multiple providers, dynamic switching, local models |
-| 7 | [Context Engine](docs/CONTEXT-RETRIEVAL.md) | ✅ Implemented | Memory retrieval, prompt injection, token management |
-| 8 | [Security](docs/SPEC.md#subsystem-security) | ⚠️ Planned | Encryption, secrets, agent sandboxing |
-| 9 | [Monitoring](docs/MONITORING.md) | ✅ Implemented v0.8 | Metrics, health checks, dashboard |
+| 7 | [Context Engine](components/CONTEXT-RETRIEVAL.md) | ✅ Implemented | Memory retrieval, prompt injection, token management |
+| 8 | [Security](SPEC.md#subsystem-security) | ⚠️ Planned | Encryption, secrets, agent sandboxing |
+| 9 | [Monitoring](components/MONITORING.md) | ✅ Implemented v0.8 | Metrics, health checks, dashboard |
 | 10 | [Backup & Recovery](docs/SPEC.md#subsystem-backup--recovery) | ⚠️ Planned | Export/import, migration, disaster recovery |
 | 11 | [External API](docs/api/ENDPOINTS.md) | ✅ Implemented v0.8 | REST API, SDK |
 | 12 | [Testing](docs/SPEC.md#subsystem-testing) | ✅ Basic | Unit, integration, benchmarks |

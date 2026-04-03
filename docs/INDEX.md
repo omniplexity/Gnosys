@@ -41,8 +41,8 @@ Gnosys is a unified intelligence framework for OpenClaw that combines multi-agen
 ## Detailed Documentation
 
 - [IMPLEMENTATION.md](./IMPLEMENTATION.md) - Implementation summary and verification
-- [docs/IMPLEMENTATION-PLAN.md](./IMPLEMENTATION-PLAN.md) - Delivery plan
-- [docs/SPEC.md](./SPEC.md) - Full product specification
+- [IMPLEMENTATION-PLAN.md](./IMPLEMENTATION-PLAN.md) - Delivery plan
+- [SPEC.md](./SPEC.md) - Full product specification
 
 ---
 

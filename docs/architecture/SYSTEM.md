@@ -185,4 +185,4 @@ Cron Schedule → Due Tasks → Task Execution → History Recording
 
 ## Configuration
 
-See [Configuration Guide](../guides/configuration.md) for full details.
+See [Configuration Guide](../guides/CONFIGURATION.md) for full details.
