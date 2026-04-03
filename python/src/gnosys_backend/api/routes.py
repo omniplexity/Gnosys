@@ -328,6 +328,11 @@ def create_router(
         """List active agents."""
         return pipeline_store.list_active_agents(parent_id)
 
+    @router.get("/pipeline/agents", response_model=list[AgentSpawnResponse])
+    def list_pipeline_agents(parent_id: str | None = None) -> list[AgentSpawnResponse]:
+        """List active pipeline agents."""
+        return pipeline_store.list_active_agents(parent_id)
+
     @router.post("/pipeline/execute", response_model=PipelineExecuteResponse)
     def execute_pipeline(request: PipelineExecuteRequest) -> PipelineExecuteResponse:
         """Execute a multi-agent pipeline."""
@@ -347,6 +352,11 @@ def create_router(
     @router.get("/learning/metrics", response_model=LearningStatsResponse)
     def learning_metrics() -> LearningStatsResponse:
         """Get learning system metrics."""
+        return trajectory_store.get_stats()
+
+    @router.get("/learning/stats", response_model=LearningStatsResponse)
+    def learning_stats() -> LearningStatsResponse:
+        """Get learning system statistics."""
         return trajectory_store.get_stats()
 
     # Trajectory endpoints
@@ -387,14 +397,14 @@ def create_router(
     # ==================== Skills Endpoints ====================
 
     @router.get("/skills", response_model=SkillListResponse)
-    def list_skills() -> SkillListResponse:
+    async def list_skills() -> SkillListResponse:
         """List all skills."""
-        return skills_system.list_skills()
+        return await skills_system.list_skills()
 
     @router.post("/skills", response_model=SkillRecord)
-    def create_skill(request: SkillCreateRequest) -> SkillRecord:
+    async def create_skill(request: SkillCreateRequest) -> SkillRecord:
         """Create a new skill."""
-        return skills_system.extract_skill(
+        return await skills_system.extract_skill(
             name=request.name,
             tools=request.tools,
             workflow=request.workflow,
@@ -405,76 +415,80 @@ def create_router(
         )
 
     @router.get("/skills/{skill_id}", response_model=SkillRecord)
-    def get_skill(skill_id: str) -> SkillRecord:
+    async def get_skill(skill_id: str) -> SkillRecord:
         """Get a skill by ID."""
-        skill = skills_system.get_skill(skill_id)
+        skill = await skills_system.get_skill(skill_id)
         if skill is None:
             raise HTTPException(status_code=404, detail="Skill not found")
         return skill
 
     @router.post("/skills/match", response_model=SkillMatchResponse)
-    def match_skill(request: SkillMatchRequest) -> SkillMatchResponse:
+    async def match_skill(request: SkillMatchRequest) -> SkillMatchResponse:
         """Match a task to the best skill."""
-        return skills_system.match_skill(request)
+        return await skills_system.match_skill(request)
 
     @router.post("/skills/{skill_id}/refine", response_model=SkillRefineResponse)
-    def refine_skill(skill_id: str, request: SkillRefineRequest) -> SkillRefineResponse:
+    async def refine_skill(
+        skill_id: str, request: SkillRefineRequest
+    ) -> SkillRefineResponse:
         """Refine a skill based on feedback."""
         try:
-            return skills_system.refine_skill(skill_id, request)
+            return await skills_system.refine_skill(skill_id, request)
         except ValueError as e:
             raise HTTPException(status_code=404, detail=str(e))
 
     @router.delete("/skills/{skill_id}")
-    def delete_skill(skill_id: str) -> dict:
+    async def delete_skill(skill_id: str) -> dict:
         """Delete a skill."""
-        success = skills_system.delete_skill(skill_id)
+        success = await skills_system.delete_skill(skill_id)
         if not success:
             raise HTTPException(status_code=404, detail="Skill not found")
         return {"deleted": skill_id, "success": True}
 
     @router.get("/skills/stats")
-    def skills_stats() -> dict:
+    async def skills_stats() -> dict:
         """Get skills system statistics."""
-        return skills_system.get_skill_stats()
+        return await skills_system.get_skill_stats()
 
     # ==================== Scheduler Endpoints ====================
 
     @router.get("/scheduled", response_model=ScheduledTaskListResponse)
-    def list_scheduled_tasks(enabled_only: bool = False) -> ScheduledTaskListResponse:
+    async def list_scheduled_tasks(
+        enabled_only: bool = False,
+    ) -> ScheduledTaskListResponse:
         """List all scheduled tasks."""
-        return scheduler.list_tasks(enabled_only)
+        return await scheduler.list_tasks(enabled_only)
 
     @router.post("/scheduled", response_model=ScheduledTaskRecord)
-    def create_scheduled_task(
+    async def create_scheduled_task(
         request: ScheduledTaskCreateRequest,
     ) -> ScheduledTaskRecord:
         """Create a new scheduled task."""
         try:
-            return scheduler.create_task(request)
+            return await scheduler.create_task(request)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
 
     @router.get("/scheduled/{task_id}", response_model=ScheduledTaskRecord)
-    def get_scheduled_task(task_id: str) -> ScheduledTaskRecord:
+    async def get_scheduled_task(task_id: str) -> ScheduledTaskRecord:
         """Get a scheduled task by ID."""
-        task = scheduler.get_task(task_id)
+        task = await scheduler.get_task(task_id)
         if task is None:
             raise HTTPException(status_code=404, detail="Task not found")
         return task
 
     @router.post("/scheduled/{task_id}/run", response_model=ScheduledTaskRunResponse)
-    def run_scheduled_task(task_id: str) -> ScheduledTaskRunResponse:
+    async def run_scheduled_task(task_id: str) -> ScheduledTaskRunResponse:
         """Run a scheduled task immediately."""
         try:
-            return scheduler.run_task(task_id)
+            return await scheduler.run_task(task_id)
         except ValueError as e:
             raise HTTPException(status_code=404, detail=str(e))
 
     @router.delete("/scheduled/{task_id}")
-    def delete_scheduled_task(task_id: str) -> dict:
+    async def delete_scheduled_task(task_id: str) -> dict:
         """Delete a scheduled task."""
-        success = scheduler.delete_task(task_id)
+        success = await scheduler.delete_task(task_id)
         if not success:
             raise HTTPException(status_code=404, detail="Task not found")
         return {"deleted": task_id, "success": True}
@@ -482,14 +496,16 @@ def create_router(
     @router.get(
         "/scheduled/{task_id}/history", response_model=ScheduledTaskHistoryResponse
     )
-    def get_task_history(task_id: str, limit: int = 50) -> ScheduledTaskHistoryResponse:
+    async def get_task_history(
+        task_id: str, limit: int = 50
+    ) -> ScheduledTaskHistoryResponse:
         """Get execution history for a task."""
-        return scheduler.get_task_history(task_id, limit)
+        return await scheduler.get_task_history(task_id, limit)
 
     @router.get("/scheduler/stats")
-    def scheduler_stats() -> dict:
+    async def scheduler_stats() -> dict:
         """Get scheduler statistics."""
-        return scheduler.get_scheduler_stats()
+        return await scheduler.get_scheduler_stats()
 
     # ==================== Monitoring Endpoints ====================
 
@@ -499,9 +515,9 @@ def create_router(
         return monitoring.check_health()
 
     @router.get("/monitoring/metrics", response_model=MetricsResponse)
-    def monitoring_metrics() -> MetricsResponse:
+    async def monitoring_metrics() -> MetricsResponse:
         """Get system metrics."""
-        return monitoring.get_metrics()
+        return await monitoring.get_metrics()
 
     # ==================== Backup & Recovery Endpoints ====================
 

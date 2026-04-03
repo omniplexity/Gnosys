@@ -79,6 +79,7 @@ class Scheduler:
         """Create a new scheduled task."""
         now = datetime.now(UTC)
         next_run = self._calculate_next_run(request.schedule, None)
+        task_id = str(uuid.uuid4())
 
         self._db.execute(
             """
