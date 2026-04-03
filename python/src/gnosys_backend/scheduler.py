@@ -7,7 +7,7 @@ from __future__ import annotations
 import json
 import re
 import uuid
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any, Callable
 
 import croniter
@@ -54,7 +54,7 @@ class Scheduler:
 
     def _calculate_next_run(self, schedule: str, last_run: datetime | None) -> datetime:
         """Calculate next run time from cron expression."""
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
 
         if schedule.startswith("@every"):
             # Handle interval format
@@ -77,12 +77,7 @@ class Scheduler:
         self, request: ScheduledTaskCreateRequest
     ) -> ScheduledTaskRecord:
         """Create a new scheduled task."""
-        # Validate cron expression
-        if not self._validate_cron(request.schedule):
-            raise ValueError(f"Invalid schedule expression: {request.schedule}")
-
-        task_id = str(uuid.uuid4())
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         next_run = self._calculate_next_run(request.schedule, None)
 
         self._db.execute(
@@ -236,8 +231,8 @@ class Scheduler:
         if not task:
             raise ValueError(f"Task {task_id} not found")
 
-        now = datetime.utcnow()
-        start_time = datetime.utcnow()
+        now = datetime.now(UTC)
+        start_time = datetime.now(UTC)
 
         result: dict[str, Any] = {}
         success = True
@@ -254,7 +249,7 @@ class Scheduler:
             error_msg = str(e)
             result = {"error": error_msg}
 
-        duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+        duration_ms = int((datetime.now(UTC) - start_time).total_seconds() * 1000)
 
         # Record execution
         execution_id = str(uuid.uuid4())
@@ -334,7 +329,7 @@ class Scheduler:
 
     async def get_due_tasks(self) -> list[ScheduledTaskRecord]:
         """Get tasks that are due to run."""
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(UTC).isoformat()
         rows = self._db.fetch_all(
             """
             SELECT * FROM scheduled_tasks 
@@ -402,7 +397,7 @@ class Scheduler:
         active = total_row["active"] if total_row else 0
 
         # Due now
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(UTC).isoformat()
         due_row = self._db.fetch_one(
             "SELECT COUNT(*) as due FROM scheduled_tasks WHERE enabled = 1 AND next_run_at <= ?",
             (now,),

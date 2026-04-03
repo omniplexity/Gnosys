@@ -218,10 +218,20 @@ export class GnosysBackendClient {
       });
 
       const text = await response.text();
-      const payload = text ? JSON.parse(text) : null;
+      let payload: unknown = null;
+      
+      if (text) {
+        try {
+          payload = JSON.parse(text);
+        } catch (parseError) {
+          throw new GnosysBackendError(`Backend returned invalid JSON response: ${parseError instanceof Error ? parseError.message : String(parseError)}`, response.status);
+        }
+      }
+
       if (!response.ok) {
         throw new GnosysBackendError(this.extractErrorMessage(payload, response.status, response.statusText), response.status);
       }
+
       return payload as T;
     } catch (error) {
       if (error instanceof GnosysBackendError) {

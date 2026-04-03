@@ -1,5 +1,5 @@
 {
-  "name": "@austin/gnosys",
+  "name": "@omniplexity/gnosys",
   "version": "1.0.0",
   "private": true,
   "description": "Gnosys memory plugin wrapper for OpenClaw",

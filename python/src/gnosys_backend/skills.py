@@ -9,7 +9,7 @@ import os
 import re
 import uuid
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -112,7 +112,7 @@ class SkillSystem:
         description: str | None = None,
     ) -> SkillRecord:
         """Extract and store a new skill."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         skill_id = str(uuid.uuid4())
         version = "1.0.0"
 
@@ -188,7 +188,9 @@ class SkillSystem:
         compounds_from: list[str],
     ) -> None:
         """Write SKILL.md file for the skill."""
-        skill_dir = self._skills_dir / name.replace(" ", "_").lower()
+        # Use skill_id for directory to avoid name collision issues
+        # (e.g., "Data Export" and "data_export" would collide if using name)
+        skill_dir = self._skills_dir / skill_id
         skill_dir.mkdir(parents=True, exist_ok=True)
 
         skill_md = f"""# Skill: {name}
@@ -223,7 +225,7 @@ class SkillSystem:
             "id": skill_id,
             "name": name,
             "version": version,
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
             "use_count": 0,
             "success_rate": 0.0,
             "trigger_count": 0,
@@ -263,7 +265,10 @@ class SkillSystem:
                     trigger_count=row["trigger_count"],
                     created_at=datetime.fromisoformat(row["created_at"]),
                     updated_at=datetime.fromisoformat(row["updated_at"]),
-                    last_used_at=datetime.fromisoformat(row["last_used_at"])
+                    # Normalize to naive datetime to avoid timezone issues
+                    last_used_at=datetime.fromisoformat(row["last_used_at"]).replace(
+                        tzinfo=None
+                    )
                     if row["last_used_at"]
                     else None,
                 )
@@ -369,7 +374,7 @@ class SkillSystem:
         old_rate = row["success_rate"]
         new_rate = old_rate * 0.9 + (1.0 if success else 0.0) * 0.1
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         self._db.execute(
             """
             UPDATE skills 
@@ -395,6 +400,11 @@ class SkillSystem:
         if not skill:
             raise ValueError(f"Skill {skill_id} not found")
 
+        # Validate version format before parsing
+        version_pattern = re.compile(r"^\d+\.\d+\.\d+$")
+        if not skill.version or not version_pattern.match(skill.version):
+            raise ValueError(f"Invalid version format: {skill.version}")
+
         # Parse current version
         major, minor, patch = map(int, skill.version.split("."))
 
@@ -407,7 +417,7 @@ class SkillSystem:
             patch += 1
 
         new_version = f"{major}.{minor}.{patch}"
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         # Update skill in database
         self._db.execute(

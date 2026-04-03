@@ -5,7 +5,7 @@ Monitoring System - Health checks, metrics, and observability.
 from __future__ import annotations
 
 import time
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from gnosys_backend.config import MonitoringConfig
@@ -49,7 +49,7 @@ class MonitoringSystem:
 
     async def get_metrics(self) -> dict[str, Any]:
         """Get system metrics."""
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
 
         # Memory stats
         memory_stats = await self._get_memory_stats()
@@ -207,7 +207,7 @@ class MonitoringSystem:
                 }
 
             # Due now
-            now = datetime.utcnow().isoformat()
+            now = datetime.now(UTC).isoformat()
             due = self._db.fetch_one(
                 "SELECT COUNT(*) as due FROM scheduled_tasks WHERE enabled = 1 AND next_run_at <= ?",
                 (now,),

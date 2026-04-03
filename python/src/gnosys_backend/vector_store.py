@@ -16,6 +16,9 @@ import numpy as np
 
 from gnosys_backend.config import AppConfig
 from gnosys_backend.db import Database
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class VectorStore:
@@ -56,6 +59,16 @@ class VectorStore:
         metadata: dict[str, Any] | None = None,
     ) -> str:
         """Store a vector embedding for a memory."""
+        # Validate dimension against existing vectors
+        existing_dim = self._get_stored_dimension()
+        if existing_dim is not None and len(vector) != existing_dim:
+            raise ValueError(
+                f"Vector dimension mismatch: incoming vector has {len(vector)} dimensions "
+                f"but existing vectors have {existing_dim} dimensions. "
+                "This may indicate embeddings provider changed. "
+                "Clear vector store or use consistent embeddings provider."
+            )
+
         vector_id = str(uuid.uuid4())
         now = datetime.now(UTC).isoformat()
 
@@ -138,11 +151,24 @@ class VectorStore:
         results.sort(key=lambda x: (-x["similarity"], x["memory_id"]))
         return results[:limit]
 
+    def _get_stored_dimension(self) -> int | None:
+        """Get the dimension of stored vectors (if any exist)."""
+        row = self._db.fetch_one("SELECT vector_json FROM vectors LIMIT 1")
+        if row:
+            vector = json.loads(row["vector_json"])
+            return len(vector)
+        return None
+
     def _cosine_similarity(
         self, vec1: list[float], vec2: list[float], vec1_norm: float
     ) -> float:
         """Calculate cosine similarity between two vectors."""
         if len(vec1) != len(vec2):
+            # Log dimension mismatch for debugging - this is likely why semantic search returns no results
+            logger.warning(
+                f"Dimension mismatch: vec1 has {len(vec1)} dimensions, vec2 has {len(vec2)} dimensions. "
+                "This may indicate embeddings provider changed or vector store was created with different dimension."
+            )
             return 0.0
 
         dot_product = sum(a * b for a, b in zip(vec1, vec2))

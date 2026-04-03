@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import math
 import re
 from typing import Any
@@ -27,6 +28,8 @@ DEFAULT_TIER_WEIGHTS: dict[ContextTier, float] = {
 }
 
 CHARS_PER_TOKEN = 4
+
+logger = logging.getLogger(__name__)
 
 
 class ContextRetrievalStore:
@@ -84,7 +87,12 @@ class ContextRetrievalStore:
     def _semantic_search_all_tiers(
         self, query: str, tiers: list[ContextTier]
     ) -> list[ContextItem]:
+        # Generate embedding with null check
         query_embedding = self._embeddings.embed(query)
+        if not query_embedding:
+            logger.warning("Embedding generation returned empty result for query")
+            return []
+
         items: list[ContextItem] = []
 
         for tier in tiers:

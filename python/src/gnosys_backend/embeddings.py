@@ -99,10 +99,19 @@ class LocalEmbeddingsProvider(EmbeddingsProvider):
 class OpenAIEmbeddingsProvider(EmbeddingsProvider):
     """OpenAI embeddings provider."""
 
+    # Dimension mapping for OpenAI embedding models
+    OPENAI_MODEL_DIMENSIONS = {
+        "text-embedding-3-small": 1536,
+        "text-embedding-3-large": 3072,
+        "text-embedding-ada-002": 1536,
+    }
+
     def __init__(self, config: AppConfig) -> None:
         self._config = config
         self._client = None
-        self._dimension = 1536  # text-embedding-3-small default
+        # Set dimension based on configured model, default to 1536
+        model = self._config.embeddings.openai_model
+        self._dimension = self.OPENAI_MODEL_DIMENSIONS.get(model, 1536)
 
     def _get_client(self) -> Any:
         """Lazy load OpenAI client."""

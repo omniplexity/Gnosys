@@ -352,6 +352,12 @@ export const GnosysPluginConfigSchema: OpenClawPluginConfigSchema = {
 };
 
 export function normalizeGnosysConfig(rawConfig: unknown, resolvePath: (input: string) => string): NormalizedGnosysPluginConfig {
+  // First validate the raw configuration before normalizing
+  const validation = validateGnosysConfig(rawConfig);
+  if (!validation.ok) {
+    throw new Error(`Invalid Gnosys configuration: ${validation.errors.join(', ')}`);
+  }
+
   const raw = asRecord(rawConfig);
   const rawSpawn = asRecord(raw.spawn);
   const rawRetention = asRecord(raw.retention);

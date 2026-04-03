@@ -152,6 +152,20 @@
             "minimum": 1
           }
         }
+      },
+      "context": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "enabled": { "type": "boolean" },
+          "budgetFraction": { "type": "number", "minimum": 0, "maximum": 1 },
+          "maxTokens": { "type": "number", "minimum": 100 },
+          "maxQueryChars": { "type": "number", "minimum": 10 },
+          "includeTiers": {
+            "type": "array",
+            "items": { "type": "string", "enum": ["working", "episodic", "semantic", "archive"] }
+          }
+        }
       }
     }
   }
