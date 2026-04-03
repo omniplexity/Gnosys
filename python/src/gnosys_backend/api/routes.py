@@ -510,9 +510,9 @@ def create_router(
     # ==================== Monitoring Endpoints ====================
 
     @router.get("/monitoring/health")
-    def monitoring_health() -> dict:
+    async def monitoring_health() -> dict:
         """Get health status."""
-        return monitoring.check_health()
+        return await monitoring.check_health()
 
     @router.get("/monitoring/metrics", response_model=MetricsResponse)
     async def monitoring_metrics() -> MetricsResponse:
