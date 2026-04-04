@@ -220,6 +220,18 @@ This guide covers all configuration options for the Gnosys plugin and backend.
 | `enabled` | boolean | true | Enable monitoring |
 | `metricsPort` | number | 8767 | Metrics port |
 
+### Backup Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `enabled` | boolean | true | Enable automatic backups |
+| `schedule` | string | `daily` | Backup schedule: `daily`, `weekly`, `monthly` |
+| `retention_daily` | number | 7 | Daily backups to keep |
+| `retention_weekly` | number | 4 | Weekly backups to keep |
+| `retention_monthly` | number | 12 | Monthly backups to keep |
+| `location` | string | `~/.openclaw/gnosys/backups` | Backup directory |
+| `compression` | string | `gzip` | Compression: `gzip`, `bzip2`, `none` |
+
 ## Environment Variables
 
 All options can be set via environment variables:
@@ -240,3 +252,8 @@ All options can be set via environment variables:
 | `GNOSYS_SCHEDULER_ENABLED` | Enable scheduler |
 | `GNOSYS_API_ENABLED` | Enable API |
 | `GNOSYS_MONITORING_ENABLED` | Enable monitoring |
+| `GNOSYS_BACKUP_ENABLED` | Enable backups |
+| `GNOSYS_BACKUP_SCHEDULE` | Backup schedule |
+| `GNOSYS_BACKUP_LOCATION` | Backup location |
+| `GNOSYS_CONTEXT_ENABLED` | Enable context retrieval |
+| `GNOSYS_CONTEXT_MAX_TOKENS` | Max context tokens |

@@ -10,6 +10,7 @@ import json
 import math
 import uuid
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, Iterable
 
 import numpy as np
@@ -28,6 +29,11 @@ class VectorStore:
         self._db = db
         self._config = config
         self._ensure_schema()
+
+    @property
+    def db_path(self) -> Path:
+        """Return the database path."""
+        return self._config.resolved_vectors_path()
 
     def _ensure_schema(self) -> None:
         """Create vector store tables if they don't exist."""

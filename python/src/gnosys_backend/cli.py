@@ -266,6 +266,64 @@ def help(
             console.print("    gnosys search project")
             console.print("    gnosys search deadline -l 5")
             return
+        elif command == "stats":
+            console.print("[bold]gnosys stats[/bold]")
+            console.print("  Show memory statistics by type and tier")
+            return
+        elif command == "backup":
+            console.print(
+                "[bold]gnosys backup [--type full|incremental] [--components <list>][/bold]"
+            )
+            console.print("  Create a backup of Gnosys data")
+            console.print("")
+            console.print("  [bold]Options:[/bold]")
+            console.print("    -t, --type         Backup type (full, incremental)")
+            console.print(
+                "    -c, --components  Comma-separated components (database,vectors,skills)"
+            )
+            console.print("")
+            console.print("  [bold]Examples:[/bold]")
+            console.print("    gnosys backup")
+            console.print("    gnosys backup --type full")
+            console.print("    gnosys backup -t incremental -c database,vectors")
+            return
+        elif command == "list-backups":
+            console.print("[bold]gnosys list-backups[/bold]")
+            console.print("  List all available backups")
+            return
+        elif command == "restore":
+            console.print(
+                "[bold]gnosys restore --backup-path <path> --target <dir>[/bold]"
+            )
+            console.print("  Restore Gnosys from a backup")
+            console.print("")
+            console.print("  [bold]Options:[/bold]")
+            console.print("    -b, --backup-path  Path to backup file")
+            console.print("    -t, --target       Target directory for restore")
+            console.print("    --overwrite        Overwrite existing files")
+            console.print("")
+            console.print("  [bold]Examples:[/bold]")
+            console.print("    gnosys restore -b ./backup.tar.gz -t ./data")
+            return
+        elif command == "context":
+            console.print("[bold]gnosys context <query> [options][/bold]")
+            console.print("  Retrieve context from memory for a query")
+            console.print("")
+            console.print("  [bold]Arguments:[/bold]")
+            console.print("    <query>    Required. Query to retrieve context for")
+            console.print("")
+            console.print("  [bold]Options:[/bold]")
+            console.print(
+                "    -m, --max-tokens  Maximum tokens to retrieve (default: 4096)"
+            )
+            console.print(
+                "    -t, --tiers       Comma-separated tiers (working,episodic,semantic,archive)"
+            )
+            console.print("")
+            console.print("  [bold]Examples:[/bold]")
+            console.print('    gnosys context "my project details"')
+            console.print('    gnosys context "project" -m 2048 -t working,episodic')
+            return
         else:
             console.print(f"[red]Unknown command: {command}[/red]")
             raise typer.Exit(code=1)
@@ -284,6 +342,11 @@ def help(
     table.add_row("store", "Store a new memory")
     table.add_row("get", "Retrieve a memory by ID")
     table.add_row("search", "Search memories")
+    table.add_row("stats", "Show memory statistics")
+    table.add_row("backup", "Create a backup")
+    table.add_row("list-backups", "List available backups")
+    table.add_row("restore", "Restore from a backup")
+    table.add_row("context", "Retrieve context for a query")
 
     console.print(table)
 
@@ -292,6 +355,10 @@ def help(
     console.print('  gnosys store --content "Remember this"')
     console.print("  gnosys get abc123")
     console.print("  gnosys search project --limit 10")
+    console.print("  gnosys stats")
+    console.print("  gnosys backup")
+    console.print("  gnosys list-backups")
+    console.print('  gnosys context "project details" --max-tokens 2048')
 
     console.print("\n[bold]Get help for a command:[/bold]")
     console.print("  gnosys help <command>")
@@ -446,6 +513,150 @@ def stats() -> None:
         stats_data = make_request("GET", f"{backend_url}/stats")
 
         console.print(json.dumps(stats_data, indent=2, default=str))
+
+    except GnosysCLIError as e:
+        console.print(format_error(e), style="bold red")
+        raise typer.Exit(code=e.code)
+
+
+@app.command()
+def backup(
+    backup_type: str = typer.Option(
+        "full",
+        "--type",
+        "-t",
+        help="Backup type: full, incremental",
+    ),
+    components: str = typer.Option(
+        "database,vectors",
+        "--components",
+        "-c",
+        help="Comma-separated components to backup",
+    ),
+) -> None:
+    """
+    Create a backup of Gnosys data.
+
+    Backs up database, vectors, and other components.
+    """
+    try:
+        config = load_config()
+        backend_url = get_backend_url(config)
+
+        payload = {
+            "backup_type": backup_type,
+            "components": [c.strip() for c in components.split(",")],
+        }
+
+        result = make_request("POST", f"{backend_url}/backup", json=payload)
+        console.print(json.dumps(result, indent=2))
+
+    except GnosysCLIError as e:
+        console.print(format_error(e), style="bold red")
+        raise typer.Exit(code=e.code)
+
+
+@app.command()
+def list_backups() -> None:
+    """
+    List all available backups.
+    """
+    try:
+        config = load_config()
+        backend_url = get_backend_url(config)
+
+        result = make_request("GET", f"{backend_url}/backup")
+        console.print(json.dumps(result, indent=2))
+
+    except GnosysCLIError as e:
+        console.print(format_error(e), style="bold red")
+        raise typer.Exit(code=e.code)
+
+
+@app.command()
+def restore(
+    backup_path: str = typer.Option(
+        ...,
+        "--backup-path",
+        "-b",
+        help="Path to backup file",
+    ),
+    target_dir: str = typer.Option(
+        ...,
+        "--target",
+        help="Target directory for restore",
+    ),
+    overwrite: bool = typer.Option(
+        False,
+        "--overwrite",
+        help="Overwrite existing files",
+    ),
+) -> None:
+    """
+    Restore Gnosys from a backup.
+    """
+    try:
+        config = load_config()
+        backend_url = get_backend_url(config)
+
+        payload = {
+            "backup_path": backup_path,
+            "target_dir": target_dir,
+            "overwrite": overwrite,
+        }
+
+        result = make_request("POST", f"{backend_url}/restore", json=payload)
+        console.print(json.dumps(result, indent=2))
+
+    except GnosysCLIError as e:
+        console.print(format_error(e), style="bold red")
+        raise typer.Exit(code=e.code)
+
+
+@app.command()
+def context(
+    query: str = typer.Argument(..., help="Query to retrieve context for"),
+    max_tokens: int = typer.Option(
+        4096,
+        "--max-tokens",
+        "-m",
+        help="Maximum tokens to retrieve",
+    ),
+    tiers: str = typer.Option(
+        "working,episodic,semantic",
+        "--tiers",
+        "-t",
+        help="Comma-separated tiers to include",
+    ),
+) -> None:
+    """
+    Retrieve context from memory for a query.
+
+    Retrieves relevant memories from the specified tiers to use as context.
+    """
+    try:
+        config = load_config()
+        backend_url = get_backend_url(config)
+
+        tier_list = [t.strip() for t in tiers.split(",")]
+        payload = {
+            "query": query,
+            "max_tokens": max_tokens,
+            "include_tiers": tier_list,
+        }
+
+        result = make_request("POST", f"{backend_url}/context/retrieve", json=payload)
+
+        console.print(f"[bold]Query:[/bold] {result.get('query')}")
+        console.print(
+            f"[bold]Used Tokens:[/bold] {result.get('used_tokens')} / {result.get('token_budget')}"
+        )
+        console.print(
+            f"[bold]Tiers:[/bold] {', '.join(result.get('tiers_included', []))}"
+        )
+        console.print("")
+        console.print("[bold]Context:[/bold]")
+        console.print(result.get("assembly_text", ""))
 
     except GnosysCLIError as e:
         console.print(format_error(e), style="bold red")

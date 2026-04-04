@@ -4,6 +4,7 @@ import re
 import uuid
 from collections import Counter
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Iterable
 
 from gnosys_backend.config import AppConfig
@@ -24,6 +25,11 @@ class MemoryStore:
     def __init__(self, db: Database, config: AppConfig) -> None:
         self._db = db
         self._config = config
+
+    @property
+    def db_path(self) -> Path:
+        """Return the database path."""
+        return self._config.resolved_db_path()
 
     def store_memory(self, request: MemoryCreateRequest) -> MemoryRecord:
         now = datetime.now(UTC)
@@ -129,9 +135,7 @@ class MemoryStore:
         return self._row_to_record(row)
 
     def delete_memory(self, memory_id: str) -> bool:
-        cursor = self._db.execute(
-            "DELETE FROM memories WHERE id = ?", (memory_id,)
-        )
+        cursor = self._db.execute("DELETE FROM memories WHERE id = ?", (memory_id,))
         return cursor.rowcount > 0
 
     def prune_expired(self) -> int:

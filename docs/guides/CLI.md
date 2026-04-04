@@ -1,6 +1,6 @@
 # Gnosys CLI Reference
 
-**Version**: 1.0.2 | **Updated**: 2026-04-04
+**Version**: 1.0.5 | **Updated**: 2026-04-03
 
 ---
 
@@ -9,6 +9,8 @@
 The Gnosys CLI provides command-line access to the Gnosys memory backend. It allows you to:
 - Check backend status and statistics
 - Store, retrieve, and search memories
+- Create and restore backups
+- Retrieve context for queries
 - View help and documentation
 
 ---
@@ -156,6 +158,138 @@ gnosys stats
 **Examples:**
 ```bash
 gnosys stats
+```
+
+---
+
+### backup
+
+Create a backup of Gnosys data.
+
+```bash
+gnosys backup [OPTIONS]
+```
+
+**Options:**
+- `-t, --type <type>` - Backup type: `full`, `incremental` (default: full)
+- `-c, --components <list>` - Comma-separated components: `database`, `vectors`, `skills` (default: database,vectors)
+
+**Examples:**
+```bash
+gnosys backup
+gnosys backup --type full
+gnosys backup -t incremental -c database,vectors
+```
+
+**Output:**
+```json
+{
+  "id": "gnosys_full_20260403_223000",
+  "backup_type": "full",
+  "components": ["database", "vectors"],
+  "file_path": "~/.openclaw/gnosys/backups/gnosys_full_20260403_223000.tar.gz",
+  "checksum": "sha256:...",
+  "size_bytes": 123456,
+  "created_at": "2026-04-03T22:30:00+00:00"
+}
+```
+
+---
+
+### list-backups
+
+List all available backups.
+
+```bash
+gnosys list-backups
+```
+
+**Examples:**
+```bash
+gnosys list-backups
+```
+
+**Output:**
+```json
+{
+  "backups": [
+    {
+      "id": "gnosys_full_20260403_223000",
+      "backup_type": "full",
+      "file_path": "~/.openclaw/gnosys/backups/gnosys_full_20260403_223000.tar.gz",
+      "size_bytes": 123456,
+      "created_at": "2026-04-03T22:30:00+00:00"
+    }
+  ]
+}
+```
+
+---
+
+### restore
+
+Restore Gnosys from a backup.
+
+```bash
+gnosys restore [OPTIONS]
+```
+
+**Options:**
+- `-b, --backup-path <path>` **(required)** - Path to backup file
+- `-t, --target <dir>` **(required)** - Target directory for restore
+- `--overwrite` - Overwrite existing files
+
+**Examples:**
+```bash
+gnosys restore -b ./backups/gnosys_full_20260403_223000.tar.gz -t ./data
+gnosys restore --backup-path ./backup.tar.gz --target ./data --overwrite
+```
+
+**Output:**
+```json
+{
+  "restored": {
+    "database": "./data/gnosys.db",
+    "vectors": "./data/vectors.db"
+  }
+}
+```
+
+---
+
+### context
+
+Retrieve context from memory for a query.
+
+```bash
+gnosys context <QUERY> [OPTIONS]
+```
+
+**Arguments:**
+- `QUERY` **(required)** - Query to retrieve context for
+
+**Options:**
+- `-m, --max-tokens <tokens>` - Maximum tokens to retrieve (default: 4096)
+- `-t, --tiers <list>` - Comma-separated tiers: `working`, `episodic`, `semantic`, `archive` (default: working,episodic,semantic)
+
+**Examples:**
+```bash
+gnosys context "my project details"
+gnosys context "project" -m 2048 -t working,episodic
+```
+
+**Output:**
+```
+Query: my project details
+Used Tokens: 1500 / 4096
+Tiers: working, episodic, semantic
+
+Context:
+[WORKING] User prefers dark mode theme
+
+[EPISODIC] Project meeting on 2026-04-01 discussed feature requirements
+
+[SEMANTIC] The project uses FastAPI with SQLite backend
 ```
 
 ---

@@ -1,6 +1,6 @@
 # Gnosys v2 Roadmap - Incremental Version Specification
 
-## Document Version: 2.0.2
+## Document Version: 2.0.3
 ## Created: 2026-04-03
 ## Author: Austin
 
@@ -62,7 +62,7 @@ This document specifies the incremental roadmap to advance Gnosys from v1.0.0 to
 
 ## Version 1.0.3 - Auto-Backup System
 
-**Priority:** HIGH | **Target:** Early next week
+**Priority:** HIGH | **Status:** COMPLETED (2026-04-03)
 
 ### Deliverables
 
@@ -78,15 +78,41 @@ This document specifies the incremental roadmap to advance Gnosys from v1.0.0 to
 - Built on 1.0.2
 
 ### Success Criteria
-- [ ] Backup creates valid compressed file
-- [ ] Restore recovers all memories
-- [ ] Checksum verification works
+- [x] Backup creates valid compressed file
+- [x] Restore recovers all memories
+- [x] Checksum verification works
+- [x] CLI commands implemented: backup, list-backups, restore
+
+---
+
+## Version 1.0.3 - Auto-Backup System
+
+**Priority:** HIGH | **Status:** COMPLETED (2026-04-03)
+
+### Deliverables
+
+| # | Task | Verification |
+|---|------|---------------|
+| 1.0.3.1 | Create backup directory structure | `backups/daily`, `backups/weekly`, `backups/monthly` exist |
+| 1.0.3.2 | Implement full backup to SQLite | `.gz` file created in daily folder |
+| 1.0.3.3 | Implement backup checksum generation | SHA256 checksum stored |
+| 1.0.3.4 | Implement restore from backup | Database restored correctly |
+| 1.0.3.5 | Add backup config to `config.json` | Schedule, retention configurable |
+
+### Dependencies
+- Built on 1.0.2
+
+### Success Criteria
+- [x] Backup creates valid compressed file
+- [x] Restore recovers all memories
+- [x] Checksum verification works
+- [x] CLI commands implemented: backup, list-backups, restore
 
 ---
 
 ## Version 1.0.4 - Search & Retrieval
 
-**Priority:** HIGH | **Target:** Early next week
+**Priority:** HIGH | **Status:** COMPLETED (2026-04-03)
 
 ### Deliverables
 
@@ -102,15 +128,15 @@ This document specifies the incremental roadmap to advance Gnosys from v1.0.0 to
 - Built on 1.0.1, 1.0.2
 
 ### Success Criteria
-- [ ] Search returns semantically similar results
-- [ ] Filters correctly narrow results
-- [ ] Stats match database counts
+- [x] Search returns semantically similar results
+- [x] Filters correctly narrow results
+- [x] Stats match database counts
 
 ---
 
 ## Version 1.0.5 - Context Engine
 
-**Priority:** MEDIUM | **Target:** Week 2
+**Priority:** MEDIUM | **Status:** COMPLETED (2026-04-03)
 
 ### Deliverables
 
@@ -126,9 +152,23 @@ This document specifies the incremental roadmap to advance Gnosys from v1.0.0 to
 - Built on 1.0.4
 
 ### Success Criteria
-- [ ] Relevant memories injected into prompts
-- [ ] Token limit respected
-- [ ] Response quality improved with context
+- [x] Relevant memories injected into prompts
+- [x] Token limit respected
+- [x] Response quality improved with context
+- [x] CLI command implemented: context
+| 1.0.5.2 | Implement ContextBuilder class | Imports without errors |
+| 1.0.5.3 | Implement token trimming | Context fits within max_tokens |
+| 1.0.5.4 | Add OpenClaw before_prompt hook | Context injected into prompts |
+| 1.0.5.5 | Configure tier weighting | Semantic tier weighted appropriately |
+
+### Dependencies
+- Built on 1.0.4
+
+### Success Criteria
+- [x] Relevant memories injected into prompts
+- [x] Token limit respected
+- [x] Response quality improved with context
+- [x] CLI command implemented: context
 
 ---
 
@@ -501,11 +541,11 @@ Patch: Bug fixes and refinements (1.0.1 → 1.0.2)
 
 Run these in order:
 
-- [ ] 1.0.1: Get local embeddings working
-- [ ] 1.0.2: Build CLI foundation
-- [ ] 1.0.3: Implement auto-backup
-- [ ] 1.0.4: Complete search and retrieval
-- [ ] 1.0.5: Context engine
+- [x] 1.0.1: Get local embeddings working
+- [x] 1.0.2: Build CLI foundation
+- [x] 1.0.3: Implement auto-backup
+- [x] 1.0.4: Complete search and retrieval
+- [x] 1.0.5: Context engine
 - [ ] 1.0.6: Full memory slot replacement
 - [ ] 1.0.7: Tool mapping
 - [ ] 1.0.8: Scheduled tasks

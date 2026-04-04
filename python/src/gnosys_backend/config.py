@@ -138,12 +138,34 @@ class APIConfig(BaseModel):
     rate_limit: APIRateLimitConfig = Field(default_factory=APIRateLimitConfig)
 
 
+class BackupConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = Field(default=True)
+    schedule: str = Field(default="daily")  # daily, weekly, monthly
+    retention_daily: int = Field(default=7, ge=1)
+    retention_weekly: int = Field(default=4, ge=1)
+    retention_monthly: int = Field(default=12, ge=1)
+    location: Path = Field(default=Path("~/.openclaw/gnosys/backups"))
+    compression: str = Field(default="gzip")
+
+
 class MonitoringConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = Field(default=True)
     metrics_port: int = Field(default=8767, ge=1, le=65535)
     health_check_interval_seconds: int = Field(default=60, ge=1)
+
+
+class ContextConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = Field(default=True)
+    max_tokens: int = Field(default=4096, ge=256, le=16384)
+    default_tiers: list[str] = Field(
+        default_factory=lambda: ["working", "episodic", "semantic"]
+    )
 
 
 class EncryptionConfig(BaseModel):
@@ -213,6 +235,8 @@ class AppConfig(BaseModel):
     scheduler: SchedulerConfig = Field(default_factory=SchedulerConfig)
     api: APIConfig = Field(default_factory=APIConfig)
     monitoring: MonitoringConfig = Field(default_factory=MonitoringConfig)
+    backup: BackupConfig = Field(default_factory=BackupConfig)
+    context: ContextConfig = Field(default_factory=ContextConfig)
     security: SecurityConfig = Field(default_factory=SecurityConfig)
 
     def resolved_db_path(self) -> Path:
@@ -227,6 +251,9 @@ class AppConfig(BaseModel):
         # Create skills storage directory
         skills_dir = self.skills.storage.directory.expanduser().resolve()
         skills_dir.mkdir(parents=True, exist_ok=True)
+        # Create backup directory
+        backup_dir = self.backup.location.expanduser().resolve()
+        backup_dir.mkdir(parents=True, exist_ok=True)
 
 
 def _env_int(name: str, default: int) -> int:
@@ -311,6 +338,20 @@ def load_config(overrides: Mapping[str, Any] | None = None) -> AppConfig:
         "monitoring": {
             "enabled": os.getenv("GNOSYS_MONITORING_ENABLED", "true").lower() == "true",
             "metrics_port": _env_int("GNOSYS_MONITORING_PORT", 8767),
+        },
+        "backup": {
+            "enabled": os.getenv("GNOSYS_BACKUP_ENABLED", "true").lower() == "true",
+            "schedule": os.getenv("GNOSYS_BACKUP_SCHEDULE", "daily"),
+            "retention_daily": _env_int("GNOSYS_BACKUP_RETENTION_DAILY", 7),
+            "retention_weekly": _env_int("GNOSYS_BACKUP_RETENTION_WEEKLY", 4),
+            "retention_monthly": _env_int("GNOSYS_BACKUP_RETENTION_MONTHLY", 12),
+            "location": os.getenv(
+                "GNOSYS_BACKUP_LOCATION", "~/.openclaw/gnosys/backups"
+            ),
+        },
+        "context": {
+            "enabled": os.getenv("GNOSYS_CONTEXT_ENABLED", "true").lower() == "true",
+            "max_tokens": _env_int("GNOSYS_CONTEXT_MAX_TOKENS", 4096),
         },
         "security": {
             "encryption": {
