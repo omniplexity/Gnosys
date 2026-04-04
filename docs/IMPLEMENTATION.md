@@ -1,12 +1,12 @@
 # Gnosys Implementation Summary
 
 **Date**: 2026-04-04
-**Version**: v1.0.2
+**Version**: v1.1.0
 **Status**: Production Ready - CLI Foundation implemented
 
 ---
 
-## What's Implemented (v1.0.2)
+## What's Implemented (v1.1.0)
 
 ### Architecture
 - **TypeScript OpenClaw plugin wrapper** + **Python FastAPI backend**
@@ -55,7 +55,7 @@
 | File | Purpose |
 |------|---------|
 | `app.py` | FastAPI app + uvicorn entrypoint |
-| `cli.py` | CLI with typer (v1.0.2) |
+| `cli.py` | CLI with typer (v1.1.0) |
 | `config.py` | Runtime configuration |
 | `db.py` | SQLite connection and schema |
 | `models.py` | Pydantic request/response models |
@@ -141,7 +141,7 @@
 - `/gnosys status` - Plugin command
 - `gnosys` CLI - Command-line interface
 
-### New Features (v1.0.2)
+### New Features (v1.1.0)
 - **CLI Foundation**: Command-line interface with typer
 - **Status Command**: Shows backend URL, DB path, memory count
 - **Help Command**: Interactive help with usage examples
@@ -216,7 +216,7 @@ All features implemented and verified:
 
 ---
 
-## Verification Results (v1.0.2)
+## Verification Results (v1.1.0)
 
 | Check | Result |
 |-------|--------|
@@ -242,11 +242,11 @@ All features implemented and verified:
 | Tool Registry & Versioning | ✅ v1.0 |
 | System Keychain Integration | ✅ v1.0 |
 | Incremental Backup | ✅ v1.0 |
-| CLI status command | ✅ v1.0.2 |
-| CLI help command | ✅ v1.0.2 |
-| CLI store command | ✅ v1.0.2 |
-| CLI get command | ✅ v1.0.2 |
-| CLI search command | ✅ v1.0.2 |
+| CLI status command | ✅ v1.1.0 |
+| CLI help command | ✅ v1.1.0 |
+| CLI store command | ✅ v1.1.0 |
+| CLI get command | ✅ v1.1.0 |
+| CLI search command | ✅ v1.1.0 |
 
 ---
 
@@ -378,7 +378,7 @@ python -m uvicorn gnosys_backend.app:app --app-dir python/src --host 127.0.0.1 -
 # 6. Verify backend
 curl http://127.0.0.1:8766/health
 
-# 7. CLI commands (v1.0.2)
+# 7. CLI commands (v1.1.0)
 gnosys status                    # Show status
 gnosys store -c "Test memory"    # Store memory
 gnosys search test               # Search memories

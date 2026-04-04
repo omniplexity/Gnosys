@@ -10,12 +10,12 @@ Gnosys is a unified intelligence framework for OpenClaw combining:
 
 ## Version
 
-- **Gnosys**: v1.0.2 (current)
+- **Gnosys**: v1.1.0 (current)
 - **OpenClaw**: v0.5+ required
 
 ## Status
 
-**Production Ready** - v1.0.2 implemented with:
+**Production Ready** - v1.1.0 implemented with:
 - ✅ Multi-agent pipeline orchestration
 - ✅ Self-learning trajectory logging
 - ✅ Autonomous skill system
@@ -62,7 +62,7 @@ Gnosys is a unified intelligence framework for OpenClaw combining:
 | 14 | [Tool Registry](docs/SPEC.md#subsystem-tool-registry) | ✅ Implemented v1.0 | Dynamic tool loading, versioning |
 | 15 | [Error Handling](docs/SPEC.md#subsystem-error-handling) | ✅ Implemented v0.9 | Error codes, retry, circuit breaker |
 | 16 | [Data Interoperability](docs/SPEC.md#subsystem-data-interoperability) | ✅ Implemented v0.9 | Import/export, compatibility |
-| 17 | [CLI](guides/CLI.md) | ✅ Implemented v1.0.2 | Command-line interface |
+| 17 | [CLI](guides/CLI.md) | ✅ Implemented v1.1.0 | Command-line interface |
 
 ## Architecture
 
@@ -114,7 +114,7 @@ Gnosys is a unified intelligence framework for OpenClaw combining:
 | File | Purpose |
 |------|---------|
 | `app.py` | FastAPI app |
-| `cli.py` | CLI (v1.0.2) |
+| `cli.py` | CLI (v1.1.0) |
 | `config.py` | Configuration |
 | `db.py` | Database |
 | `models.py` | Pydantic models |

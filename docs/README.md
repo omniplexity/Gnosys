@@ -1,4 +1,4 @@
-# Gnosys v1.0.2
+# Gnosys v1.1.0
 
 Gnosys is a unified intelligence framework for OpenClaw that combines:
 - Multi-agent multi-layer pipeline orchestration
@@ -210,5 +210,5 @@ See the `docs/` directory for detailed documentation:
 
 ## Version
 
-- **Gnosys**: v1.0.2
+- **Gnosys**: v1.1.0
 - **OpenClaw**: v0.5+ required

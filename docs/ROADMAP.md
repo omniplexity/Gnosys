@@ -1,12 +1,13 @@
 # Gnosys v2 Roadmap - Incremental Version Specification
 
-## Document Version: 2.0.3
+## Document Version: 2.0.4
 ## Created: 2026-04-03
 ## Author: Austin
+## Updated: 2026-04-04
 
 ## Overview
 
-This document specifies the incremental roadmap to advance Gnosys from v1.0.0 to v2.0.0. Each version increment (1.0.x) represents a focused, testable release with 3-5 concrete deliverables.
+This document specifies the incremental roadmap to advance Gnosys from v1.0.0 to v2.0.0. Each version increment (1.0.x or 1.x.x) represents a focused, testable release with 3-5 concrete deliverables. Major versions cycle from 1.0.x (x = 1-9) to 1.1.x (x = 0-9), then 1.2.x, etc.
 
 ---
 
@@ -174,7 +175,7 @@ This document specifies the incremental roadmap to advance Gnosys from v1.0.0 to
 
 ## Version 1.0.6 - Memory Slot Replacement
 
-**Priority:** MEDIUM | **Target:** Week 2
+**Priority:** MEDIUM | **Status:** COMPLETED (2026-04-04)
 
 ### Deliverables
 
@@ -190,15 +191,15 @@ This document specifies the incremental roadmap to advance Gnosys from v1.0.0 to
 - Built on 1.0.5
 
 ### Success Criteria
-- [ ] Gnosys is primary memory backend
-- [ ] Sessions persist across restarts
-- [ ] Fallback works if Gnosys down
+- [x] Gnosys is primary memory backend
+- [x] Sessions persist across restarts
+- [x] Fallback works if Gnosys down
 
 ---
 
 ## Version 1.0.7 - Tool Mapping
 
-**Priority:** MEDIUM | **Target:** Week 2
+**Priority:** MEDIUM | **Status:** COMPLETED (2026-04-04)
 
 ### Deliverables
 
@@ -214,15 +215,15 @@ This document specifies the incremental roadmap to advance Gnosys from v1.0.0 to
 - Built on 1.0.6
 
 ### Success Criteria
-- [ ] Native memory tools route to Gnosys
-- [ ] Aliases work correctly
-- [ ] No duplication of data
+- [x] Native memory tools route to Gnosys
+- [x] Aliases work correctly
+- [x] No duplication of data
 
 ---
 
 ## Version 1.0.8 - Scheduled Tasks
 
-**Priority:** MEDIUM | **Target:** Week 2-3
+**Priority:** MEDIUM | **Status:** COMPLETED (2026-04-04)
 
 ### Deliverables
 
@@ -238,15 +239,15 @@ This document specifies the incremental roadmap to advance Gnosys from v1.0.0 to
 - Built on 1.0.7
 
 ### Success Criteria
-- [ ] Health checks run on schedule
-- [ ] Memories extracted from conversations
-- [ ] Database stays optimized
+- [x] Health checks run on schedule
+- [x] Memories extracted from conversations
+- [x] Database stays optimized
 
 ---
 
 ## Version 1.0.9 - Skill Foundation
 
-**Priority:** MEDIUM | **Target:** Week 3
+**Priority:** MEDIUM | **Status:** COMPLETED (2026-04-04)
 
 ### Deliverables
 
@@ -262,13 +263,13 @@ This document specifies the incremental roadmap to advance Gnosys from v1.0.0 to
 - Built on 1.0.8
 
 ### Success Criteria
-- [ ] Can detect repeated patterns
-- [ ] Skills extracted to database
-- [ ] CLI shows skill list
+- [x] Can detect repeated patterns
+- [x] Skills extracted to database
+- [x] CLI shows skill list
 
 ---
 
-## Version 1.0.10 - Learning Loop
+## Version 1.1.0 - Learning Loop
 
 **Priority:** MEDIUM | **Target:** Week 3
 
@@ -276,11 +277,11 @@ This document specifies the incremental roadmap to advance Gnosys from v1.0.0 to
 
 | # | Task | Verification |
 |---|------|---------------|
-| 1.0.10.1 | Configure learning mode = "hybrid" | Config accepts mode |
-| 1.0.10.2 | Implement scheduled learning (hourly) | Cron job triggers analysis |
-| 1.0.10.3 | Implement triggered learning on "remember this" | Extracts user-directed memories |
-| 1.0.10.4 | Implement strategy weight adaptation | Updates based on outcomes |
-| 1.0.10.5 | Implement learning log | Tracks what was learned |
+| 1.1.0.1 | Configure learning mode = "hybrid" | Config accepts mode |
+| 1.1.0.2 | Implement scheduled learning (hourly) | Cron job triggers analysis |
+| 1.1.0.3 | Implement triggered learning on "remember this" | Extracts user-directed memories |
+| 1.1.0.4 | Implement strategy weight adaptation | Updates based on outcomes |
+| 1.1.0.5 | Implement learning log | Tracks what was learned |
 
 ### Dependencies
 - Built on 1.0.9
@@ -292,7 +293,7 @@ This document specifies the incremental roadmap to advance Gnosys from v1.0.0 to
 
 ---
 
-## Version 1.0.11 - Error System Foundation
+## Version 1.1.1 - Error System Foundation
 
 **Priority:** LOW | **Target:** Week 3-4
 
@@ -300,14 +301,14 @@ This document specifies the incremental roadmap to advance Gnosys from v1.0.0 to
 
 | # | Task | Verification |
 |---|------|---------------|
-| 1.0.11.1 | Define error code hierarchy | Codes 1000-9999 per category |
-| 1.0.11.2 | Create error registry (JSON) | Code → message, causes, fix |
-| 1.0.11.3 | Implement error logging | Structured log format |
-| 1.0.11.4 | Add embeddings fallback | Keyword-only if vector fails |
-| 1.0.11.5 | Implement graceful degradation | System stays up on failures |
+| 1.1.1.1 | Define error code hierarchy | Codes 1000-9999 per category |
+| 1.1.1.2 | Create error registry (JSON) | Code → message, causes, fix |
+| 1.1.1.3 | Implement error logging | Structured log format |
+| 1.1.1.4 | Add embeddings fallback | Keyword-only if vector fails |
+| 1.1.1.5 | Implement graceful degradation | System stays up on failures |
 
 ### Dependencies
-- Built on 1.0.10
+- Built on 1.1.0
 
 ### Success Criteria
 - [ ] Error codes are descriptive
@@ -316,7 +317,7 @@ This document specifies the incremental roadmap to advance Gnosys from v1.0.0 to
 
 ---
 
-## Version 1.0.12 - Embeddings Enhancement
+## Version 1.1.2 - Embeddings Enhancement
 
 **Priority:** LOW | **Target:** Week 4
 
@@ -324,11 +325,11 @@ This document specifies the incremental roadmap to advance Gnosys from v1.0.0 to
 
 | # | Task | Verification |
 |---|------|---------------|
-| 1.0.12.1 | Implement batch embedding support | Process multiple texts at once |
-| 1.0.12.2 | Add batch size config | Configurable batch_size |
-| 1.0.12.3 | Optimize embedding caching | Cache frequently accessed vectors |
-| 1.0.12.4 | Add model auto-download | Downloads on first use |
-| 1.0.12.5 | Performance test | <500ms per embedding |
+| 1.1.2.1 | Implement batch embedding support | Process multiple texts at once |
+| 1.1.2.2 | Add batch size config | Configurable batch_size |
+| 1.1.2.3 | Optimize embedding caching | Cache frequently accessed vectors |
+| 1.1.2.4 | Add model auto-download | Downloads on first use |
+| 1.1.2.5 | Performance test | <500ms per embedding |
 
 ### Dependencies
 - Built on 1.0.1
@@ -340,7 +341,7 @@ This document specifies the incremental roadmap to advance Gnosys from v1.0.0 to
 
 ---
 
-## Version 1.0.13 - Database Optimization
+## Version 1.1.3 - Database Optimization
 
 **Priority:** LOW | **Target:** Week 4
 
@@ -348,14 +349,14 @@ This document specifies the incremental roadmap to advance Gnosys from v1.0.0 to
 
 | # | Task | Verification |
 |---|------|---------------|
-| 1.0.13.1 | Create migrations table | Tracks schema version |
-| 1.0.13.2 | Implement migration runner | Applies pending migrations |
-| 1.0.13.3 | Add composite indexes | Optimizes common queries |
-| 1.0.13.4 | Implement query logging | Identify slow queries |
-| 1.0.13.5 | Analyze and rebuild fragmented indexes | Weekly maintenance |
+| 1.1.3.1 | Create migrations table | Tracks schema version |
+| 1.1.3.2 | Implement migration runner | Applies pending migrations |
+| 1.1.3.3 | Add composite indexes | Optimizes common queries |
+| 1.1.3.4 | Implement query logging | Identify slow queries |
+| 1.1.3.5 | Analyze and rebuild fragmented indexes | Weekly maintenance |
 
 ### Dependencies
-- Built on 1.0.12
+- Built on 1.1.2
 
 ### Success Criteria
 - [ ] Migrations run on startup
@@ -364,7 +365,7 @@ This document specifies the incremental roadmap to advance Gnosys from v1.0.0 to
 
 ---
 
-## Version 1.0.14 - Dashboard Foundation
+## Version 1.1.4 - Dashboard Foundation
 
 **Priority:** LOW | **Target:** Week 4-5
 
@@ -372,14 +373,14 @@ This document specifies the incremental roadmap to advance Gnosys from v1.0.0 to
 
 | # | Task | Verification |
 |---|------|---------------|
-| 1.0.14.1 | Add dashboard route | `GET /gnosys/dashboard` loads |
-| 1.0.14.2 | Implement overview panel | Total memories, by tier/type |
-| 1.0.14.3 | Implement memory browser | Search and view memories |
-| 1.0.14.4 | Implement health panel | Component status indicators |
-| 1.0.14.5 | Add dark mode | Theme toggle |
+| 1.1.4.1 | Add dashboard route | `GET /gnosys/dashboard` loads |
+| 1.1.4.2 | Implement overview panel | Total memories, by tier/type |
+| 1.1.4.3 | Implement memory browser | Search and view memories |
+| 1.1.4.4 | Implement health panel | Component status indicators |
+| 1.1.4.5 | Add dark mode | Theme toggle |
 
 ### Dependencies
-- Built on 1.0.13
+- Built on 1.1.3
 
 ### Success Criteria
 - [ ] Dashboard loads in browser
@@ -388,7 +389,7 @@ This document specifies the incremental roadmap to advance Gnosys from v1.0.0 to
 
 ---
 
-## Version 1.0.15 - Visualization
+## Version 1.1.5 - Visualization
 
 **Priority:** LOW | **Target:** Week 5
 
@@ -396,14 +397,14 @@ This document specifies the incremental roadmap to advance Gnosys from v1.0.0 to
 
 | # | Task | Verification |
 |---|------|---------------|
-| 1.0.15.1 | Implement memory timeline | Memories over time chart |
-| 1.0.15.2 | Implement tier distribution | Pie chart |
-| 1.0.15.3 | Implement activity graph | Recent activity |
-| 1.0.15.4 | Implement skill tree view | Hierarchical skill display |
-| 1.0.15.5 | Add export functionality | CSV/JSON export |
+| 1.1.5.1 | Implement memory timeline | Memories over time chart |
+| 1.1.5.2 | Implement tier distribution | Pie chart |
+| 1.1.5.3 | Implement activity graph | Recent activity |
+| 1.1.5.4 | Implement skill tree view | Hierarchical skill display |
+| 1.1.5.5 | Add export functionality | CSV/JSON export |
 
 ### Dependencies
-- Built on 1.0.14
+- Built on 1.1.4
 
 ### Success Criteria
 - [ ] Charts render correctly
@@ -412,7 +413,7 @@ This document specifies the incremental roadmap to advance Gnosys from v1.0.0 to
 
 ---
 
-## Version 1.0.16 - CLI Complete
+## Version 1.1.6 - CLI Complete
 
 **Priority:** LOW | **Target:** Week 5
 
@@ -420,14 +421,14 @@ This document specifies the incremental roadmap to advance Gnosys from v1.0.0 to
 
 | # | Task | Verification |
 |---|------|---------------|
-| 1.0.16.1 | Implement `/gnosys delete <id>` | Removes memory |
-| 1.0.16.2 | Implement `/gnosys edit <id> --content <text>` | Updates memory |
-| 1.0.16.3 | Implement `/gnosys import <file>` | Bulk import |
-| 1.0.16.4 | Implement `/gnosys export` | Bulk export |
-| 1.0.16.5 | Add tab completion | CLI UX improvement |
+| 1.1.6.1 | Implement `/gnosys delete <id>` | Removes memory |
+| 1.1.6.2 | Implement `/gnosys edit <id> --content <text>` | Updates memory |
+| 1.1.6.3 | Implement `/gnosys import <file>` | Bulk import |
+| 1.1.6.4 | Implement `/gnosys export` | Bulk export |
+| 1.1.6.5 | Add tab completion | CLI UX improvement |
 
 ### Dependencies
-- Built on 1.0.15
+- Built on 1.1.5
 
 ### Success Criteria
 - [ ] All CRUD operations work
@@ -436,7 +437,7 @@ This document specifies the incremental roadmap to advance Gnosys from v1.0.0 to
 
 ---
 
-## Version 1.0.17 - /doctor Command
+## Version 1.1.7 - /doctor Command
 
 **Priority:** LOW | **Target:** Week 5-6
 
@@ -444,14 +445,14 @@ This document specifies the incremental roadmap to advance Gnosys from v1.0.0 to
 
 | # | Task | Verification |
 |---|------|---------------|
-| 1.0.17.1 | Implement `/gnosys doctor` run | Executes diagnostics |
-| 1.0.17.2 | Implement auto-fix attempts | Fixes common issues |
-| 1.0.17.3 | Add remediation steps | Detailed instructions |
-| 1.0.17.4 | Add system health scoring | /doctor gives grade |
-| 1.0.17.5 | Add report export | Saves diagnostics |
+| 1.1.7.1 | Implement `/gnosys doctor` run | Executes diagnostics |
+| 1.1.7.2 | Implement auto-fix attempts | Fixes common issues |
+| 1.1.7.3 | Add remediation steps | Detailed instructions |
+| 1.1.7.4 | Add system health scoring | /doctor gives grade |
+| 1.1.7.5 | Add report export | Saves diagnostics |
 
 ### Dependencies
-- Built on 1.0.11
+- Built on 1.1.1
 
 ### Success Criteria
 - [ ] /doctor runs without errors
@@ -460,7 +461,7 @@ This document specifies the incremental roadmap to advance Gnosys from v1.0.0 to
 
 ---
 
-## Version 1.0.18 - Testing & Polish
+## Version 1.1.8 - Testing & Polish
 
 **Priority:** LOW | **Target:** Week 6
 
@@ -468,14 +469,14 @@ This document specifies the incremental roadmap to advance Gnosys from v1.0.0 to
 
 | # | Task | Verification |
 |---|------|---------------|
-| 1.0.18.1 | Increase test coverage | Target 80%+ coverage |
-| 1.0.18.2 | Add integration tests | Full flows work |
-| 1.0.18.3 | Performance benchmarking | All targets met |
-| 1.0.18.4 | Documentation complete | All API endpoints documented |
-| 1.0.18.5 | Release v1.1.0 | Tagged release |
+| 1.1.8.1 | Increase test coverage | Target 80%+ coverage |
+| 1.1.8.2 | Add integration tests | Full flows work |
+| 1.1.8.3 | Performance benchmarking | All targets met |
+| 1.1.8.4 | Documentation complete | All API endpoints documented |
+| 1.1.8.5 | Release v1.2.0 | Tagged release |
 
 ### Dependencies
-- Built on 1.0.17
+- Built on 1.1.7
 
 ### Success Criteria
 - [ ] Tests pass
@@ -484,7 +485,7 @@ This document specifies the incremental roadmap to advance Gnosys from v1.0.0 to
 
 ---
 
-## Version 1.0.19 through 1.0.x - Future Features
+## Version 1.1.9 through 1.1.x - Future Features
 
 Reserved for features identified during development that aren't critical paths.
 
@@ -500,7 +501,7 @@ Potential candidates (to be prioritized):
 
 ## Version 2.0.0 - Standalone Desktop App
 
-**Priority:** FUTURE | **Target:** Post v1.0.x
+**Priority:** FUTURE | **Target:** Post v1.x
 
 ### Vision
 Refactor Gnosys framework into standalone desktop application:
@@ -531,8 +532,9 @@ Patch: Bug fixes and refinements (1.0.1 → 1.0.2)
 ## Dependencies Graph
 
 ```
-1.0.1 → 1.0.2 → 1.0.3 → 1.0.4 → 1.0.5 → 1.0.6 → 1.0.7 → 1.0.8 → 1.0.9 → 1.0.10
-                          ↘_______________________________________________↗
+1.0.1 → 1.0.2 → 1.0.3 → 1.0.4 → 1.0.5 → 1.0.6 → 1.0.7 → 1.0.8 → 1.0.9 →
+1.1.0 → 1.1.1 → 1.1.2 → 1.1.3 → 1.1.4 → 1.1.5 → 1.1.6 → 1.1.7 → 1.1.8 → 1.1.9
+                                                        ↘___________________↗
 ```
 
 ---
@@ -546,13 +548,22 @@ Run these in order:
 - [x] 1.0.3: Implement auto-backup
 - [x] 1.0.4: Complete search and retrieval
 - [x] 1.0.5: Context engine
-- [ ] 1.0.6: Full memory slot replacement
-- [ ] 1.0.7: Tool mapping
-- [ ] 1.0.8: Scheduled tasks
-- [ ] 1.0.9: Skill foundation
-- [ ] 1.0.10: Learning loop
-- [ ] 1.0.11: Error system foundation
-- [ ] 1.0.12+: Polish and refine
+- [x] 1.0.6: Full memory slot replacement
+- [x] 1.0.7: Tool mapping
+- [x] 1.0.8: Scheduled tasks
+- [x] 1.0.9: Skill foundation
+- [ ] 1.1.0: Learning loop
+- [ ] 1.1.1: Error system foundation
+- [ ] 1.1.2+: Polish and refine
+
+---
+
+## Version 1.1.0 - Next Milestone
+
+The v1.0.x cycle (1.0.1-1.0.9) is complete! The next major release is **v1.1.0** which includes:
+- Learning Loop
+- Error System Foundation
+- And more...
 
 ---
 
@@ -560,7 +571,7 @@ Run these in order:
 
 - Each version should take 3-7 days of development
 - Test thoroughly before moving to next version
-- Use version tags in git: `v1.0.1`, `v1.0.2`, etc.
+- Use version tags in git: `v1.0.1`, `v1.0.2`, `v1.1.0`, etc.
 - Update changelog with each release
 - Prioritize based on user feedback
 
