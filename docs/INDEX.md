@@ -55,6 +55,7 @@ Gnosys is a unified intelligence framework for OpenClaw that combines multi-agen
 | API Endpoints | [api/ENDPOINTS.md](./api/ENDPOINTS.md) |
 | Architecture | [architecture/SYSTEM.md](./architecture/SYSTEM.md) |
 | Implementation | [IMPLEMENTATION.md](./IMPLEMENTATION.md) |
+| CLI Reference | [guides/CLI.md](./guides/CLI.md) - Command-line interface |
 
 ---
 
@@ -67,3 +68,4 @@ Gnosys is a unified intelligence framework for OpenClaw that combines multi-agen
 | 0.8.0 | 2026-04-03 | Skills, Scheduler, Monitoring |
 | 0.9.0 | 2026-04-03 | Security, Backup, Error Handling, Interop |
 | 1.0.0 | 2026-04-03 | Performance Caching, Batch Processing, Tool Registry, Keychain, Incremental Backup |
+| 1.0.2 | 2026-04-04 | CLI Foundation - status, help, store, get, search commands |
