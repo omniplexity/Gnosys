@@ -14,6 +14,7 @@ from gnosys_backend.entity_extraction import EntityExtractor, EntityStore
 from gnosys_backend.learning import LearningStore
 from gnosys_backend.memory_store import MemoryStore
 from gnosys_backend.monitoring import MonitoringSystem
+from gnosys_backend.plugin import GnosysPlugin, create_plugin
 from gnosys_backend.pipeline import PipelineStore
 from gnosys_backend.scheduler import Scheduler
 from gnosys_backend.skills import SkillSystem
@@ -24,6 +25,10 @@ from gnosys_backend.vector_store import VectorStore
 def create_app(config: AppConfig | None = None) -> FastAPI:
     app_config = config or load_config()
     db = Database(app_config.resolved_db_path())
+
+    # Initialize Gnosys plugin for memory slot replacement
+    gnosys_plugin = create_plugin(app_config, db)
+
     store = MemoryStore(db, app_config)
 
     # Initialize embeddings provider and vector store
@@ -71,7 +76,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
             vectors.close()
             entity_store.close()
 
-    app = FastAPI(title="Gnosys Backend", version="0.8.0", lifespan=lifespan)
+    app = FastAPI(title="Gnosys Backend", version="1.0.5", lifespan=lifespan)
     app.state.config = app_config
     app.state.store = store
     app.state.embeddings = embeddings

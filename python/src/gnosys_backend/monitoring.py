@@ -43,7 +43,7 @@ class MonitoringSystem:
             if all(v == "healthy" for v in components.values())
             else "degraded",
             "service": "gnosys",
-            "version": "0.8.0",
+            "version": "1.0.5",
             "components": components,
         }
 

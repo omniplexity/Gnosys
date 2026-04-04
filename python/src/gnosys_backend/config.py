@@ -158,6 +158,13 @@ class MonitoringConfig(BaseModel):
     health_check_interval_seconds: int = Field(default=60, ge=1)
 
 
+class MemoryStorageConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    directory: Path = Field(default=Path("~/.openclaw/gnosys/memory"))
+    max_slots: int = Field(default=1000, ge=1)
+
+
 class ContextConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -237,6 +244,7 @@ class AppConfig(BaseModel):
     monitoring: MonitoringConfig = Field(default_factory=MonitoringConfig)
     backup: BackupConfig = Field(default_factory=BackupConfig)
     context: ContextConfig = Field(default_factory=ContextConfig)
+    memory: MemoryStorageConfig = Field(default_factory=MemoryStorageConfig)
     security: SecurityConfig = Field(default_factory=SecurityConfig)
 
     def resolved_db_path(self) -> Path:
@@ -254,6 +262,9 @@ class AppConfig(BaseModel):
         # Create backup directory
         backup_dir = self.backup.location.expanduser().resolve()
         backup_dir.mkdir(parents=True, exist_ok=True)
+        # Create memory storage directory
+        memory_dir = self.memory.directory.expanduser().resolve()
+        memory_dir.mkdir(parents=True, exist_ok=True)
 
 
 def _env_int(name: str, default: int) -> int:
@@ -352,6 +363,10 @@ def load_config(overrides: Mapping[str, Any] | None = None) -> AppConfig:
         "context": {
             "enabled": os.getenv("GNOSYS_CONTEXT_ENABLED", "true").lower() == "true",
             "max_tokens": _env_int("GNOSYS_CONTEXT_MAX_TOKENS", 4096),
+        },
+        "memory": {
+            "directory": os.getenv("GNOSYS_MEMORY_DIR", "~/.openclaw/gnosys/memory"),
+            "max_slots": _env_int("GNOSYS_MEMORY_MAX_SLOTS", 1000),
         },
         "security": {
             "encryption": {

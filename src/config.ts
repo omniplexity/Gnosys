@@ -400,7 +400,7 @@ export function normalizeGnosysConfig(rawConfig: unknown, resolvePath: (input: s
       defaultSearchLimit: asNumber(rawRetention.defaultSearchLimit) ?? 10
     },
     spawn: {
-      command: asString(rawSpawn.command) ?? "python",
+      command: asString(rawSpawn.command) ?? (process.platform === "win32" ? "py" : "python3"),
       args: asStringArray(rawSpawn.args) ?? ["-m", "gnosys_backend.app"],
       cwd: resolvedCwd,
       host,

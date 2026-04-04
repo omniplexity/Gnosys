@@ -83,7 +83,7 @@ def create_router(
         return HealthResponse(
             status="healthy" if store.health() else "unhealthy",
             service="gnosys-backend",
-            version="0.8.0",
+            version="1.0.5",
             database=str(store.get_stats().database_path),
         )
 
@@ -450,6 +450,29 @@ def create_router(
         """Get skills system statistics."""
         return await skills_system.get_skill_stats()
 
+    @router.post("/skills/detect")
+    async def detect_skills(request: dict) -> dict:
+        """
+        Detect skill patterns from trajectories.
+
+        Analyzes recent trajectories to find repeated tool sequences
+        that can be extracted as skills.
+        """
+        trajectory_limit = request.get("trajectory_limit", 100)
+        min_frequency = request.get("min_frequency", 3)
+        min_sequence_length = request.get("min_sequence_length", 2)
+
+        patterns = await skills_system.detect_patterns_from_trajectories(
+            trajectory_limit=trajectory_limit,
+            min_frequency=min_frequency,
+            min_sequence_length=min_sequence_length,
+        )
+
+        return {
+            "patterns": patterns,
+            "count": len(patterns),
+        }
+
     # ==================== Scheduler Endpoints ====================
 
     @router.get("/scheduled", response_model=ScheduledTaskListResponse)
@@ -506,6 +529,31 @@ def create_router(
     async def scheduler_stats() -> dict:
         """Get scheduler statistics."""
         return await scheduler.get_scheduler_stats()
+
+    @router.get("/scheduler/tasks", response_model=ScheduledTaskListResponse)
+    async def list_scheduled_tasks() -> ScheduledTaskListResponse:
+        """List all scheduled tasks."""
+        return await scheduler.list_tasks()
+
+    @router.post("/scheduler/tasks", response_model=ScheduledTaskRecord)
+    async def create_scheduled_task(
+        request: ScheduledTaskCreateRequest,
+    ) -> ScheduledTaskRecord:
+        """Create a new scheduled task."""
+        return await scheduler.create_task(request)
+
+    @router.post(
+        "/scheduler/tasks/{task_id}/run", response_model=ScheduledTaskRunResponse
+    )
+    async def run_scheduled_task(task_id: str) -> ScheduledTaskRunResponse:
+        """Run a scheduled task immediately."""
+        return await scheduler.run_task(task_id)
+
+    @router.delete("/scheduler/tasks/{task_id}")
+    async def delete_scheduled_task(task_id: str) -> dict:
+        """Delete a scheduled task."""
+        deleted = await scheduler.delete_task(task_id)
+        return {"deleted": deleted, "task_id": task_id}
 
     # ==================== Monitoring Endpoints ====================
 

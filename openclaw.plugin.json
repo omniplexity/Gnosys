@@ -13,8 +13,13 @@
     },
     "spawn.command": {
       "label": "Python Command",
-      "placeholder": "python",
-      "advanced": true
+      "placeholder": "py",
+      "help": "Use 'py' on Windows, 'python3' on Linux/Mac"
+    },
+    "spawn.cwd": {
+      "label": "Working Directory",
+      "placeholder": "./python",
+      "help": "Directory containing Python source (must be absolute path or relative to gateway root)"
     },
     "spawn.port": {
       "label": "Backend Port",

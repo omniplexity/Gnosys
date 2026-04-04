@@ -111,7 +111,10 @@ export default definePluginEntry({
         try {
           await service.ensureReady();
         } catch (error) {
-          api.logger.warn(`Gnosys backend start failed: ${error instanceof Error ? error.message : String(error)}`);
+          const message = error instanceof Error ? error.message : String(error);
+          api.logger.error(`Gnosys backend start failed: ${message}`);
+          // Throw to fail the gateway start - the plugin cannot function without the backend
+          throw new Error(`Gnosys backend failed to start: ${message}`);
         }
       }
     });

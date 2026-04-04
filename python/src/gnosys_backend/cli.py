@@ -347,6 +347,9 @@ def help(
     table.add_row("list-backups", "List available backups")
     table.add_row("restore", "Restore from a backup")
     table.add_row("context", "Retrieve context for a query")
+    table.add_row("schedule", "Manage scheduled tasks")
+    table.add_row("detect-skills", "Detect skills from trajectories")
+    table.add_row("skills", "List, view, create, delete skills")
 
     console.print(table)
 
@@ -657,6 +660,274 @@ def context(
         console.print("")
         console.print("[bold]Context:[/bold]")
         console.print(result.get("assembly_text", ""))
+
+    except GnosysCLIError as e:
+        console.print(format_error(e), style="bold red")
+        raise typer.Exit(code=e.code)
+
+
+@app.command()
+def schedule(
+    action: str = typer.Argument(..., help="Action: list, add, run, delete"),
+    name: Optional[str] = typer.Option(
+        None, "--name", "-n", help="Task name (for add/delete)"
+    ),
+    task_type: str = typer.Option("health_check", "--type", "-t", help="Task type"),
+    schedule: str = typer.Option(
+        "@every 15m", "--schedule", "-s", help="Cron schedule or @every interval"
+    ),
+    task_id: Optional[str] = typer.Option(
+        None, "--id", "-i", help="Task ID (for run/delete)"
+    ),
+) -> None:
+    """
+    Manage scheduled tasks.
+
+    List, add, run, or delete scheduled tasks.
+    """
+    try:
+        config = load_config()
+        backend_url = get_backend_url(config)
+
+        if action == "list":
+            result = make_request("GET", f"{backend_url}/scheduler/tasks")
+            tasks = result.get("tasks", [])
+            if not tasks:
+                console.print("[yellow]No scheduled tasks found.[/yellow]")
+                return
+
+            table = Table(show_header=True, header_style="bold")
+            table.add_column("Name")
+            table.add_column("Type")
+            table.add_column("Schedule")
+            table.add_column("Enabled")
+            table.add_column("Next Run")
+
+            for task in tasks:
+                table.add_row(
+                    task.get("name", ""),
+                    task.get("task_type", ""),
+                    task.get("schedule", ""),
+                    str(task.get("enabled", False)),
+                    str(task.get("next_run_at", "N/A")),
+                )
+            console.print(table)
+
+        elif action == "add":
+            if not name:
+                console.print("[red]Error: --name required for add action[/red]")
+                raise typer.Exit(code=1)
+
+            payload = {
+                "name": name,
+                "task_type": task_type,
+                "schedule": schedule,
+                "enabled": True,
+                "description": f"CLI: {task_type} task",
+                "action": {"type": task_type},
+                "delivery": {"method": "internal"},
+            }
+            result = make_request(
+                "POST", f"{backend_url}/scheduler/tasks", json=payload
+            )
+            console.print(f"[green]Task '{name}' created successfully.[/green]")
+            console.print(json.dumps(result, indent=2))
+
+        elif action == "run":
+            if not task_id:
+                console.print("[red]Error: --id required for run action[/red]")
+                raise typer.Exit(code=1)
+
+            result = make_request(
+                "POST", f"{backend_url}/scheduler/tasks/{task_id}/run"
+            )
+            console.print(f"[green]Task executed: {result.get('executed')}[/green]")
+            if result.get("result"):
+                console.print(json.dumps(result.get("result"), indent=2))
+
+        elif action == "delete":
+            if not task_id and not name:
+                console.print(
+                    "[red]Error: --id or --name required for delete action[/red]"
+                )
+                raise typer.Exit(code=1)
+
+            # First get task ID if name provided
+            if not task_id:
+                list_result = make_request("GET", f"{backend_url}/scheduler/tasks")
+                tasks = list_result.get("tasks", [])
+                matching = [t for t in tasks if t.get("name") == name]
+                if not matching:
+                    console.print(f"[red]Task '{name}' not found[/red]")
+                    raise typer.Exit(code=1)
+                task_id = matching[0].get("id")
+
+            make_request("DELETE", f"{backend_url}/scheduler/tasks/{task_id}")
+            console.print(f"[green]Task deleted successfully.[/green]")
+
+        else:
+            console.print(f"[red]Unknown action: {action}[/red]")
+            raise typer.Exit(code=1)
+
+    except GnosysCLIError as e:
+        console.print(format_error(e), style="bold red")
+        raise typer.Exit(code=e.code)
+
+
+@app.command()
+def detect_skills(
+    trajectory_limit: int = typer.Option(
+        100, "--trajectory-limit", "-l", help="Number of trajectories to analyze"
+    ),
+    min_frequency: int = typer.Option(
+        3, "--min-frequency", "-f", help="Minimum pattern frequency"
+    ),
+) -> None:
+    """
+    Detect skills from trajectory patterns.
+
+    Analyzes recent task trajectories to extract repeated tool sequences
+    that can be saved as reusable skills.
+    """
+    try:
+        config = load_config()
+        backend_url = get_backend_url(config)
+
+        payload = {
+            "trajectory_limit": trajectory_limit,
+            "min_frequency": min_frequency,
+        }
+
+        result = make_request("POST", f"{backend_url}/skills/detect", json=payload)
+
+        patterns = result.get("patterns", [])
+        if not patterns:
+            console.print("[yellow]No skill patterns detected.[/yellow]")
+            return
+
+        console.print(f"[bold]Detected {len(patterns)} skill patterns:[/bold]\n")
+
+        table = Table(show_header=True, header_style="bold")
+        table.add_column("Tools")
+        table.add_column("Frequency")
+        table.add_column("Success Rate")
+
+        for pattern in patterns:
+            tools = " -> ".join(pattern.get("tools", []))
+            table.add_row(
+                tools,
+                str(pattern.get("frequency", 0)),
+                f"{pattern.get('success_rate', 0) * 100:.1f}%",
+            )
+
+        console.print(table)
+
+        console.print("\n[bold]To extract a skill, use:[/bold]")
+        console.print(
+            "  gnosys skills create --tools '<tool1,tool2,...>' --workflow '<step1,step2,...>'"
+        )
+
+    except GnosysCLIError as e:
+        console.print(format_error(e), style="bold red")
+        raise typer.Exit(code=e.code)
+
+
+@app.command()
+def skills(
+    action: str = typer.Argument(..., help="Action: list, view, create, delete"),
+    skill_id: Optional[str] = typer.Option(
+        None, "--id", "-i", help="Skill ID (for view/delete)"
+    ),
+    name: Optional[str] = typer.Option(
+        None, "--name", "-n", help="Skill name (for create)"
+    ),
+    tools: Optional[str] = typer.Option(
+        None, "--tools", "-t", help="Comma-separated tools (for create)"
+    ),
+    workflow: Optional[str] = typer.Option(
+        None, "--workflow", "-w", help="Comma-separated workflow steps (for create)"
+    ),
+    description: Optional[str] = typer.Option(
+        None, "--description", "-d", help="Skill description (for create)"
+    ),
+) -> None:
+    """
+    Manage skills.
+
+    List, view, create, or delete skills.
+    """
+    try:
+        config = load_config()
+        backend_url = get_backend_url(config)
+
+        if action == "list":
+            result = make_request("GET", f"{backend_url}/skills")
+            skills = result.get("skills", [])
+            if not skills:
+                console.print("[yellow]No skills found.[/yellow]")
+                return
+
+            table = Table(show_header=True, header_style="bold")
+            table.add_column("Name")
+            table.add_column("Version")
+            table.add_column("Tools")
+            table.add_column("Use Count")
+            table.add_column("Success Rate")
+
+            for skill in skills:
+                tools_str = ", ".join(skill.get("tools", [])[:3])
+                if len(skill.get("tools", [])) > 3:
+                    tools_str += "..."
+                table.add_row(
+                    skill.get("name", ""),
+                    skill.get("version", ""),
+                    tools_str,
+                    str(skill.get("use_count", 0)),
+                    f"{skill.get('success_rate', 0) * 100:.1f}%",
+                )
+            console.print(table)
+
+        elif action == "view":
+            if not skill_id:
+                console.print("[red]Error: --id required for view action[/red]")
+                raise typer.Exit(code=1)
+
+            result = make_request("GET", f"{backend_url}/skills/{skill_id}")
+            console.print(json.dumps(result, indent=2))
+
+        elif action == "create":
+            if not name:
+                console.print("[red]Error: --name required for create action[/red]")
+                raise typer.Exit(code=1)
+            if not tools:
+                console.print("[red]Error: --tools required for create action[/red]")
+                raise typer.Exit(code=1)
+            if not workflow:
+                console.print("[red]Error: --workflow required for create action[/red]")
+                raise typer.Exit(code=1)
+
+            payload = {
+                "name": name,
+                "tools": [t.strip() for t in tools.split(",")],
+                "workflow": [w.strip() for w in workflow.split(",")],
+                "description": description or f"Skill created via CLI",
+            }
+
+            result = make_request("POST", f"{backend_url}/skills", json=payload)
+            console.print(f"[green]Skill '{name}' created successfully.[/green]")
+            console.print(json.dumps(result, indent=2))
+
+        elif action == "delete":
+            if not skill_id:
+                console.print("[red]Error: --id required for delete action[/red]")
+                raise typer.Exit(code=1)
+
+            make_request("DELETE", f"{backend_url}/skills/{skill_id}")
+            console.print(f"[green]Skill deleted successfully.[/green]")
+
+        else:
+            console.print(f"[red]Unknown action: {action}[/red]")
+            raise typer.Exit(code=1)
 
     except GnosysCLIError as e:
         console.print(format_error(e), style="bold red")

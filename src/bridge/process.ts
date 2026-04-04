@@ -61,19 +61,56 @@ export class GnosysBackendProcessManager {
     this.state = "starting";
     this.lastError = null;
 
+    // Build PYTHONPATH to include the Python source directory
+    const pythonSrcPath = path.join(this.config.spawn.cwd, "src");
+    const pythonPathEnv = this.joinPathEnv(pythonSrcPath, process.env.PYTHONPATH);
+
+    // Determine the Python command - try multiple options on Windows
+    let pythonCmd = this.config.spawn.command;
+    
+    // On Windows, prefer using 'py' launcher which handles Python versions better
+    if (process.platform === "win32") {
+      const originalCmd = pythonCmd;
+      // If using plain 'python', switch to 'py'
+      if (pythonCmd === "python" || pythonCmd === "python.exe") {
+        pythonCmd = "py";
+        this.logger.info(`Detected Windows, using 'py' launcher instead of '${originalCmd}'`);
+      } else if (pythonCmd === "py") {
+        this.logger.info(`Using Windows 'py' launcher`);
+      }
+      
+      // Validate the working directory is correct - it should point to the python source
+      const expectedPath = path.join(this.config.spawn.cwd, "src", "gnosys_backend");
+      this.logger.info(`Expected backend path: ${expectedPath}`);
+      
+      // Log the actual user config if cwd looks wrong
+      if (!this.config.spawn.cwd.includes("Desktop") && !this.config.spawn.cwd.includes("Gnosys")) {
+        this.logger.warn(`Working directory '${this.config.spawn.cwd}' may be incorrect.`);
+        this.logger.warn(`Expected path containing 'Desktop' and 'Gnosys'.`);
+        this.logger.warn(`Update spawn.cwd in your OpenClaw config to point to the correct directory.`);
+      }
+    }
+
+    this.logger.info(`Starting Gnosys backend: ${pythonCmd} ${this.config.spawn.args.join(" ")}`);
+    this.logger.info(`Working directory: ${this.config.spawn.cwd}`);
+    this.logger.info(`PYTHONPATH: ${pythonPathEnv}`);
+    this.logger.info(`Backend URL: ${this.config.backendUrl}`);
+
     const env = {
       ...process.env,
-      PYTHONPATH: this.joinPathEnv(path.join(this.config.spawn.cwd, "src"), process.env.PYTHONPATH),
+      PYTHONPATH: pythonPathEnv,
       GNOSYS_HOST: this.config.spawn.host,
       GNOSYS_PORT: String(this.config.spawn.port),
       GNOSYS_DB_PATH: this.config.spawn.dbPath,
+      GNOSYS_VECTORS_PATH: this.config.spawn.vectorsPath,
       GNOSYS_RETENTION_EPISODIC_DAYS: String(this.config.retention.episodicDays),
       GNOSYS_RETENTION_ARCHIVE_DAYS: String(this.config.retention.archiveDays),
       GNOSYS_DEFAULT_SEARCH_LIMIT: String(this.config.retention.defaultSearchLimit),
+      GNOSYS_EMBEDDINGS_PROVIDER: this.config.embeddings.provider,
       ...this.config.spawn.env
     };
 
-    const child = spawn(this.config.spawn.command, this.config.spawn.args, {
+    const child = spawn(pythonCmd, this.config.spawn.args, {
       cwd: this.config.spawn.cwd,
       env,
       stdio: "pipe"
@@ -95,6 +132,21 @@ export class GnosysBackendProcessManager {
       this.state = "failed";
       this.lastError = error.message;
       this.logger.error(`Failed to spawn Gnosys backend: ${error.message}`);
+      
+      // Provide specific guidance for common Windows issues
+      if (error.code === "ENOENT") {
+        const cmd = pythonCmd;
+        this.logger.error(`The command '${cmd}' was not found.`);
+        this.logger.error(`On Windows, try using 'py' instead of 'python':`);
+        this.logger.error(`  "spawn": { "command": "py", "args": ["-m", "gnosys_backend.app"] }`);
+        this.logger.error(`Or ensure Python is in your PATH by running: where python`);
+      }
+      
+      this.logger.error(`Please verify:`);
+      this.logger.error(`  1. Python is installed: py --version (Windows) / python3 --version (Linux/Mac)`);
+      this.logger.error(`  2. Working directory exists: ${this.config.spawn.cwd}`);
+      this.logger.error(`  3. Python source path exists: ${pythonSrcPath}`);
+      this.logger.error(`  4. Dependencies are installed: pip install -e ./python`);
     });
 
     try {
@@ -113,15 +165,22 @@ export class GnosysBackendProcessManager {
 
   private async waitForHealth(): Promise<void> {
     const deadline = Date.now() + this.config.spawn.startupTimeoutMs;
+    let attempts = 0;
     while (Date.now() < deadline) {
+      attempts++;
       try {
         await this.client.health();
+        this.logger.info(`Gnosys backend health check passed after ${attempts} attempt(s)`);
         return;
-      } catch {
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        if (attempts <= 3) {
+          this.logger.info(`Health check attempt ${attempts} failed: ${errorMsg}`);
+        }
         await new Promise((resolve) => setTimeout(resolve, 250));
       }
     }
-    throw new Error(`Timed out starting spawned Gnosys backend at ${this.config.backendUrl}`);
+    throw new Error(`Timed out starting spawned Gnosys backend at ${this.config.backendUrl} after ${attempts} attempts. Check that port ${this.config.spawn.port} is available and the backend can start successfully.`);
   }
 
   private captureOutput(text: string): void {
