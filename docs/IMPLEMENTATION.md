@@ -1,12 +1,12 @@
 # Gnosys Implementation Summary
 
-**Date**: 2026-04-03
-**Version**: v1.0
-**Status**: Production Ready - Performance Caching, Batch Processing, Tool Registry, Keychain, Incremental Backup implemented
+**Date**: 2026-04-04
+**Version**: v1.0.2
+**Status**: Production Ready - CLI Foundation implemented
 
 ---
 
-## What's Implemented (v1.0)
+## What's Implemented (v1.0.2)
 
 ### Architecture
 - **TypeScript OpenClaw plugin wrapper** + **Python FastAPI backend**
@@ -55,6 +55,7 @@
 | File | Purpose |
 |------|---------|
 | `app.py` | FastAPI app + uvicorn entrypoint |
+| `cli.py` | CLI with typer (v1.0.2) |
 | `config.py` | Runtime configuration |
 | `db.py` | SQLite connection and schema |
 | `models.py` | Pydantic request/response models |
@@ -138,6 +139,17 @@
 - `gnosys_backup` - Backup & restore tool
 - `gnosys_migrate` - Import/export tool
 - `/gnosys status` - Plugin command
+- `gnosys` CLI - Command-line interface
+
+### New Features (v1.0.2)
+- **CLI Foundation**: Command-line interface with typer
+- **Status Command**: Shows backend URL, DB path, memory count
+- **Help Command**: Interactive help with usage examples
+- **Store Command**: Store memories from command line
+- **Get Command**: Retrieve memories by ID
+- **Search Command**: Search memories with filters
+- **Stats Command**: View memory statistics
+- **Structured Error Output**: Error codes, messages, suggestions
 
 ### New Features (v1.0)
 - **Performance Caching**: Multi-layer caching (LRU, TTL, Query, Embedding)
@@ -204,7 +216,7 @@ All features implemented and verified:
 
 ---
 
-## Verification Results (v1.0)
+## Verification Results (v1.0.2)
 
 | Check | Result |
 |-------|--------|
@@ -230,6 +242,11 @@ All features implemented and verified:
 | Tool Registry & Versioning | ✅ v1.0 |
 | System Keychain Integration | ✅ v1.0 |
 | Incremental Backup | ✅ v1.0 |
+| CLI status command | ✅ v1.0.2 |
+| CLI help command | ✅ v1.0.2 |
+| CLI store command | ✅ v1.0.2 |
+| CLI get command | ✅ v1.0.2 |
+| CLI search command | ✅ v1.0.2 |
 
 ---
 
@@ -346,7 +363,7 @@ All features implemented and verified:
 # 1. Install Node dependencies
 npm install
 
-# 2. Install Python dependencies
+# 2. Install Python dependencies (includes CLI)
 python -m pip install -e "./python[test]"
 
 # 3. Run TypeScript checks
@@ -361,7 +378,14 @@ python -m uvicorn gnosys_backend.app:app --app-dir python/src --host 127.0.0.1 -
 # 6. Verify backend
 curl http://127.0.0.1:8766/health
 
-# 7. Context retrieval test
+# 7. CLI commands (v1.0.2)
+gnosys status                    # Show status
+gnosys store -c "Test memory"    # Store memory
+gnosys search test               # Search memories
+gnosys get <id>                  # Get memory by ID
+gnosys help                      # Show help
+
+# 8. Context retrieval test
 curl -X POST "http://127.0.0.1:8766/context/retrieve" \
   -H "Content-Type: application/json" \
   -d '{"query": "what was I working on", "max_tokens": 2000}'

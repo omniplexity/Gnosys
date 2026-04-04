@@ -10,12 +10,12 @@ Gnosys is a unified intelligence framework for OpenClaw combining:
 
 ## Version
 
-- **Gnosys**: v1.0.0 (current)
+- **Gnosys**: v1.0.2 (current)
 - **OpenClaw**: v0.5+ required
 
 ## Status
 
-**Production Ready** - v1.0 fully implemented with:
+**Production Ready** - v1.0.2 implemented with:
 - ✅ Multi-agent pipeline orchestration
 - ✅ Self-learning trajectory logging
 - ✅ Autonomous skill system
@@ -31,6 +31,7 @@ Gnosys is a unified intelligence framework for OpenClaw combining:
 - ✅ Tool Registry & Versioning
 - ✅ System Keychain Integration
 - ✅ Incremental Backup
+- ✅ CLI Foundation
 
 ## Documentation
 
@@ -52,15 +53,16 @@ Gnosys is a unified intelligence framework for OpenClaw combining:
 | 5 | [Scheduled Automation](docs/SPEC.md#subsystem-scheduled-automation) | ✅ Implemented v0.8 | Cron scheduler, autonomous task execution |
 | 6 | [Model-Agnostic LLM](docs/SPEC.md#subsystem-model-agnostic-llm-integration) | ✅ Implemented | Multiple providers, dynamic switching, local models |
 | 7 | [Context Engine](components/CONTEXT-RETRIEVAL.md) | ✅ Implemented | Memory retrieval, prompt injection, token management |
-| 8 | [Security](SPEC.md#subsystem-security) | ⚠️ Planned | Encryption, secrets, agent sandboxing |
+| 8 | [Security](SPEC.md#subsystem-security) | ✅ Implemented v0.9 | Encryption, secrets, agent sandboxing |
 | 9 | [Monitoring](components/MONITORING.md) | ✅ Implemented v0.8 | Metrics, health checks, dashboard |
-| 10 | [Backup & Recovery](docs/SPEC.md#subsystem-backup--recovery) | ⚠️ Planned | Export/import, migration, disaster recovery |
+| 10 | [Backup & Recovery](docs/SPEC.md#subsystem-backup--recovery) | ✅ Implemented v0.9 | Export/import, migration, disaster recovery |
 | 11 | [External API](docs/api/ENDPOINTS.md) | ✅ Implemented v0.8 | REST API, SDK |
 | 12 | [Testing](docs/SPEC.md#subsystem-testing) | ✅ Basic | Unit, integration, benchmarks |
-| 13 | [Performance](docs/SPEC.md#subsystem-performance-optimization) | ⚠️ Planned | Caching, batch processing |
-| 14 | [Tool Registry](docs/SPEC.md#subsystem-tool-registry) | ⚠️ Planned | Dynamic tool loading, versioning |
-| 15 | [Error Handling](docs/SPEC.md#subsystem-error-handling) | ⚠️ Planned | Error codes, retry, circuit breaker |
-| 16 | [Data Interoperability](docs/SPEC.md#subsystem-data-interoperability) | ⚠️ Planned | Import/export, compatibility |
+| 13 | [Performance](docs/SPEC.md#subsystem-performance-optimization) | ✅ Implemented v1.0 | Caching, batch processing |
+| 14 | [Tool Registry](docs/SPEC.md#subsystem-tool-registry) | ✅ Implemented v1.0 | Dynamic tool loading, versioning |
+| 15 | [Error Handling](docs/SPEC.md#subsystem-error-handling) | ✅ Implemented v0.9 | Error codes, retry, circuit breaker |
+| 16 | [Data Interoperability](docs/SPEC.md#subsystem-data-interoperability) | ✅ Implemented v0.9 | Import/export, compatibility |
+| 17 | [CLI](guides/CLI.md) | ✅ Implemented v1.0.2 | Command-line interface |
 
 ## Architecture
 
@@ -112,6 +114,7 @@ Gnosys is a unified intelligence framework for OpenClaw combining:
 | File | Purpose |
 |------|---------|
 | `app.py` | FastAPI app |
+| `cli.py` | CLI (v1.0.2) |
 | `config.py` | Configuration |
 | `db.py` | Database |
 | `models.py` | Pydantic models |

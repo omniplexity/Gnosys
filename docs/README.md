@@ -1,4 +1,4 @@
-# Gnosys v1.0
+# Gnosys v1.0.2
 
 Gnosys is a unified intelligence framework for OpenClaw that combines:
 - Multi-agent multi-layer pipeline orchestration
@@ -7,6 +7,7 @@ Gnosys is a unified intelligence framework for OpenClaw that combines:
 - Autonomous skill system for workflow automation
 - Cron-like task scheduler
 - Full observability through monitoring
+- Command-line interface for backend management
 
 ## What it currently does
 
@@ -172,6 +173,32 @@ curl http://127.0.0.1:8766/monitoring/metrics
 
 - `/gnosys status` - Show backend status
 
+## CLI
+
+The Gnosys CLI provides command-line access to the backend:
+
+```bash
+# Install CLI
+pip install -e "./python"
+
+# Show status
+gnosys status
+
+# Store a memory
+gnosys store --content "Remember this"
+
+# Search memories
+gnosys search project
+
+# Get memory by ID
+gnosys get <memory-id>
+
+# Show help
+gnosys help
+```
+
+See **[docs/guides/CLI.md](guides/CLI.md)** for full CLI reference.
+
 ## Documentation
 
 See the `docs/` directory for detailed documentation:
@@ -183,5 +210,5 @@ See the `docs/` directory for detailed documentation:
 
 ## Version
 
-- **Gnosys**: v1.0.0
+- **Gnosys**: v1.0.2
 - **OpenClaw**: v0.5+ required
