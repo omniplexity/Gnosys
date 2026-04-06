@@ -1,22 +1,65 @@
-# Gnosys Archive Roadmap
+# Gnosys Roadmap
 
 ## Purpose
 
-This roadmap tracks archive maintenance, not product delivery.
+This roadmap tracks the build-out of the new Gnosys scaffold.
 
-## Completed
+## Phase 0 - Foundation
 
-- Removed deprecated plugin/backend source from `main`
-- Preserved product and architecture documents
-- Added archive-oriented contribution and release guidance
-- Added a changelog for archive revisions
+- workspace root tooling
+- desktop shell scaffold
+- backend scaffold
+- shared domain package
+- documentation alignment
 
-## Next archive tasks
+Exit criteria:
 
-- Verify remaining docs do not reference deleted source files
-- Keep links in `README.md` and `docs/INDEX.md` current
-- Record future archive changes in `CHANGELOG.md`
+- repository installs cleanly
+- desktop app boots
+- backend health endpoint responds
+- shared package compiles
 
-## Future state
+## Phase 1 - Core workflow
 
-- If the repository is ever restored as an active codebase, replace this archive roadmap with an implementation roadmap.
+- chat-first console interactions
+- tasks and project state
+- memory model and retrieval service
+- agent orchestration primitives
+- execution timeline and diagnostics
+
+Exit criteria:
+
+- tasks can be created and tracked
+- state moves cleanly between app surfaces
+- backend exposes usable foundation APIs
+
+## Phase 2 - Persistence and control
+
+- local database layer
+- approvals and autonomy modes
+- session recovery
+- tool execution policy
+- better audit trails
+
+Exit criteria:
+
+- state survives restart
+- sensitive operations are visible and gated
+- operator controls are explicit
+
+## Phase 3 - Expansion
+
+- skill registry
+- scheduling
+- learning loop
+- richer observability
+- more complete agent runtime
+
+Exit criteria:
+
+- feature modules land without destabilizing the foundation
+- docs stay aligned with the implementation
+
+## Notes
+
+- The roadmap should be updated whenever the scaffold meaningfully changes.

@@ -1,33 +1,46 @@
-# Contributing to the Gnosys Archive
+# Contributing to Gnosys
 
-This repository is now documentation-only. Contributions should keep the archive accurate, consistent, and easy to navigate.
+Gnosys is now a live scaffold for a desktop console, backend runtime, and shared domain package. Contributions should keep the foundation modular and easy to extend.
 
 ## Before you start
 
 - Read [README.md](README.md) and [docs/INDEX.md](docs/INDEX.md).
-- Check [CHANGELOG.md](CHANGELOG.md) to see what changed in the archive.
-- Make sure your change keeps links, labels, and descriptions aligned.
+- Run `npm install` and `python -m pip install -e "./apps/backend[test]"` once the workspace is bootstrapped.
+- Check [CHANGELOG.md](CHANGELOG.md) to understand recent scaffolding changes.
 
 ## What to contribute
 
-- Documentation corrections
-- Link fixes
-- Archive notes
-- Historical context clarifications
+- Desktop shell work in `apps/desktop/`
+- Backend routes and runtime scaffolding in `apps/backend/`
+- Shared domain models in `packages/shared/`
+- Documentation updates that keep the scaffold coherent
 
 ## Branching and commits
 
 - Use a feature branch.
 - Keep commits focused.
-- Prefer one logical documentation change per commit.
+- Prefer one logical change per commit.
+
+## Code expectations
+
+- Keep TypeScript strict.
+- Keep Python routes and models explicit and lightweight.
+- Avoid coupling the desktop shell directly to backend implementation details.
+- Prefer shared domain types over duplicated constants.
 
 ## Documentation expectations
 
-- Update the archive docs when the branch layout changes.
-- Remove references to deleted runtime files.
-- Keep the repository description honest about being documentation-only.
+- Update docs whenever the scaffold structure changes.
+- Keep `README.md`, `docs/INDEX.md`, and `docs/REPOSITORY-OVERVIEW.md` aligned.
+- If a file moves, update links in the same change.
+
+## Testing expectations
+
+- Run `npm run check` after TypeScript changes.
+- Run `npm run build` before shipping the desktop scaffold.
+- Run `python -m pytest apps/backend/tests -q` after backend changes.
 
 ## Release notes
 
-- If you make a visible documentation change, record it in `CHANGELOG.md`.
-- If you reintroduce code in the future, restore the project release process and update `RELEASE.md` accordingly.
+- Record scaffold changes in `CHANGELOG.md`.
+- Keep `RELEASE.md` aligned with the current package layout and versioning approach.

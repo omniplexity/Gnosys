@@ -2,26 +2,38 @@
 
 ## Purpose
 
-This repository no longer contains the OpenClaw plugin/backend implementation. It now preserves the documentation archive that describes that removed system.
+This repository is a clean scaffold for the next Gnosys build.
 
-## What remains
+## Top-level layout
 
-- `README.md` - archive overview
-- `CHANGELOG.md` - archive revisions
-- `CONTRIBUTING.md` - archive contribution guidance
-- `RELEASE.md` - archive revision policy
-- `docs/` - product, architecture, audit, and roadmap documents
+- `README.md` - repository overview
+- `CHANGELOG.md` - notable changes
+- `CONTRIBUTING.md` - contribution guidance
+- `RELEASE.md` - versioning and release policy
+- `apps/desktop/` - desktop console app
+- `apps/backend/` - Python backend scaffold
+- `packages/shared/` - shared domain package
+- `docs/` - architecture, roadmap, and project docs
 
-## Historical context
+## Workspace roles
 
-The removed implementation previously contained:
+### Desktop app
 
-- a TypeScript OpenClaw plugin wrapper
-- a Python FastAPI backend
-- memory, context, learning, skills, scheduler, and monitoring subsystems
+- renders the operator console
+- consumes shared domain data
+- provides the primary chat/work surface
 
-Those files have been intentionally removed from `main`.
+### Backend scaffold
+
+- exposes health and status endpoints
+- becomes the runtime home for memory, orchestration, and persistence
+
+### Shared package
+
+- centralizes navigation and domain types
+- keeps the desktop and backend aligned on data shape
 
 ## Notes
 
-- This file is a historical map, not a live codebase guide.
+- This file is a codebase map for the scaffolded repo.
+- It should be updated as new packages and apps are added.

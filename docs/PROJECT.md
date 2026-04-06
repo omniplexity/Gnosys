@@ -2,22 +2,17 @@
 
 ## Summary
 
-Gnosys is currently maintained as a documentation archive. The previous OpenClaw plugin/backend implementation has been removed from `main`.
+Gnosys has been rebuilt as a foundational scaffold. The repository now contains the structure needed to grow the desktop app, backend service, and shared domain package.
 
-## Current contents
+## Current state
 
-- [README.md](../README.md)
-- [CHANGELOG.md](../CHANGELOG.md)
-- [CONTRIBUTING.md](../CONTRIBUTING.md)
-- [RELEASE.md](../RELEASE.md)
-- [docs/](./)
-
-## Current status
-
-- No runtime source files remain in the branch
-- No package manifest or backend code remains in the branch
-- The retained documents explain the archived product, architecture, and repository history
+- root workspace tooling is present
+- desktop app scaffold exists
+- backend scaffold exists
+- shared package scaffold exists
+- documentation tracks the new layout
 
 ## Notes
 
-- This file exists to describe the archive state, not an active software delivery.
+- This is the starting point for product build-out.
+- The goal is to keep the foundation modular and easy to extend.

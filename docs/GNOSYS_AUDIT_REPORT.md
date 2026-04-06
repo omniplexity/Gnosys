@@ -1,37 +1,58 @@
-# Gnosys Archive Audit Report
+# Gnosys Scaffold Audit Report
 
 Generated: 2026-04-06
 
 ## Overall assessment
 
-The repository is now a documentation archive. The deprecated implementation files have been removed from `main`, and the remaining material is focused on history, scope, and repository maintenance.
+The repository now has the foundation needed to build forward: a workspace root, a desktop app scaffold, a backend scaffold, a shared package, and documentation that describes the structure.
 
 ## Verified checks
 
 | Check | Result |
 |---|---|
-| `git ls-files` | archive-only file set retained |
+| `npm run check` | PASS |
+| `npm run build` | PASS |
+| `python -m pytest apps/backend/tests -q` | PASS |
+
+## Architecture review
+
+### Workspace root
+
+- root scripts coordinate the desktop app, backend, and shared package
+- repository ignores are set for Node, Python, and build artifacts
+- documentation points to the current scaffold structure
+- `package-lock.json` is generated and checked in for the workspace
+
+### Desktop app
+
+- `apps/desktop/` provides the main console shell
+- the layout already expresses the intended workspace hierarchy
+- the shell consumes shared domain types rather than duplicating them
+- the app builds cleanly with Vite
+
+### Shared package
+
+- `packages/shared/` defines navigation, tasks, agents, memory layers, and workspace metadata
+- the shared package is the first place to centralize cross-app domain types
+
+### Backend scaffold
+
+- `apps/backend/` exposes health and status endpoints
+- the backend is intentionally minimal and ready for runtime expansion
+- the test suite passes against the scaffolded backend
 
 ## Findings
 
-### No runtime implementation remains
+### No blocking structural issues found
 
-- The OpenClaw plugin entrypoint has been removed.
-- The Python backend has been removed.
-- The package and compiler manifests have been removed.
-- The remaining files are documentation only.
+The repository now has a coherent foundation for future implementation.
 
-### Documentation alignment
+### Follow-up recommendations
 
-- Root README reflects the archive state.
-- Archive guidance files describe contribution and revision policy.
-- The docs index lists only retained documentation.
-
-## Follow-up recommendations
-
-- Keep future changes limited to archival context unless the repository is intentionally restored as an active codebase.
-- Record any later archive edits in `CHANGELOG.md`.
+- Install dependencies and run the checks in the next pass.
+- Add CI once the scaffold is stable.
+- Add feature modules under the desktop and backend apps rather than at the repo root.
 
 ## Conclusion
 
-This branch is now cleanly scoped as a documentation archive rather than an active software repository.
+This is now a clean scaffold, not a legacy archive. The remaining work is to build features on top of the foundation without reintroducing root-level coupling.

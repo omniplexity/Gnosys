@@ -2,24 +2,20 @@
 
 ## Overview
 
-Gnosys is preserved here as a documentation archive. The implementation files that previously lived in `main` have been removed.
+Gnosys is now a fresh scaffold for a desktop console, backend runtime, and shared domain package.
 
 ## Getting Started
 
-- [README.md](../README.md) - archive overview
-- [REPOSITORY-OVERVIEW.md](./REPOSITORY-OVERVIEW.md) - historical codebase map
-- [CONTRIBUTING.md](../CONTRIBUTING.md) - archive contribution guidance
-- [RELEASE.md](../RELEASE.md) - archive revision policy
-- [CHANGELOG.md](../CHANGELOG.md) - archive change history
-- [PROJECT.md](./PROJECT.md) - archive status
+- [README.md](../README.md) - repository overview
+- [REPOSITORY-OVERVIEW.md](./REPOSITORY-OVERVIEW.md) - codebase map
+- [PRD.md](./PRD.md) - product direction
+- [ARCHITECTURE.md](./ARCHITECTURE.md) - system architecture
+- [ROADMAP.md](./ROADMAP.md) - implementation roadmap
+- [GNOSYS_AUDIT_REPORT.md](./GNOSYS_AUDIT_REPORT.md) - scaffold audit
 
-## Core Documentation
+## Workspace Structure
 
-- [PRD.md](./PRD.md) - product requirements document
-- [ARCHITECTURE.md](./ARCHITECTURE.md) - technical architecture specification
-- [ROADMAP.md](./ROADMAP.md) - archive roadmap
-- [GNOSYS_AUDIT_REPORT.md](./GNOSYS_AUDIT_REPORT.md) - archive audit report
-
-## Note
-
-- Links to the removed implementation documents have been intentionally dropped.
+- [docs/README.md](./README.md)
+- [apps/desktop/](../apps/desktop/)
+- [apps/backend/](../apps/backend/)
+- [packages/shared/](../packages/shared/)

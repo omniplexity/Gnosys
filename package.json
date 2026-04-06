@@ -1,0 +1,19 @@
+{
+  "name": "gnosys",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -k \"npm run dev --workspace @gnosys/desktop\" \"npm run dev:backend\"",
+    "dev:backend": "python -m uvicorn gnosys_backend.app:app --app-dir apps/backend/src --host 127.0.0.1 --port 8766",
+    "build": "npm run build --workspace @gnosys/shared && npm run build --workspace @gnosys/desktop",
+    "check": "npm run check --workspace @gnosys/shared && npm run check --workspace @gnosys/desktop",
+    "test:backend": "pytest apps/backend/tests -q"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}

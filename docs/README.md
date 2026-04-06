@@ -1,23 +1,24 @@
-# Gnosys Documentation Archive
+# Gnosys Documentation
 
-This branch preserves the product and architecture documentation after the implementation files were removed from `main`.
+This repository now contains the scaffold for the next Gnosys build.
 
-## What is here
+## Current layout
 
-- product requirements and architecture notes
-- repository overview and audit notes
-- roadmap and release guidance for the archive state
+- `apps/desktop/` - desktop console shell
+- `apps/backend/` - Python API and runtime scaffold
+- `packages/shared/` - shared domain types and seed data
+- `docs/` - architecture, roadmap, and project notes
 
-## Documentation
+## Key docs
 
-- [INDEX.md](./INDEX.md) - archive index
-- [PRD.md](./PRD.md) - original product requirements
-- [ARCHITECTURE.md](./ARCHITECTURE.md) - original technical architecture
-- [REPOSITORY-OVERVIEW.md](./REPOSITORY-OVERVIEW.md) - historical repository map
-- [ROADMAP.md](./ROADMAP.md) - archive roadmap
-- [GNOSYS_AUDIT_REPORT.md](./GNOSYS_AUDIT_REPORT.md) - archive audit report
+- [INDEX.md](./INDEX.md)
+- [PRD.md](./PRD.md)
+- [ARCHITECTURE.md](./ARCHITECTURE.md)
+- [ROADMAP.md](./ROADMAP.md)
+- [REPOSITORY-OVERVIEW.md](./REPOSITORY-OVERVIEW.md)
+- [GNOSYS_AUDIT_REPORT.md](./GNOSYS_AUDIT_REPORT.md)
 
-## Notes
+## Status
 
-- The implementation docs and runtime source were intentionally removed from `main`.
-- These documents are kept as historical references.
+- The repository has been reinitialized as a real project scaffold.
+- The old plugin-only implementation is no longer present on `main`.

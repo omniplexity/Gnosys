@@ -1,21 +1,24 @@
-# Release and Versioning for the Archive
+# Release and Versioning
 
-The live Gnosys plugin/backend implementation has been removed from `main`. This branch now acts as a documentation archive.
+Gnosys uses a simple foundation-first release policy while the scaffold is being built.
 
-## Current policy
+## Versioning
 
-- There is no active software release process for this branch.
-- Repository updates should be treated as archive revisions.
-- If code is ever reintroduced, restore semantic versioning for the runtime and backend.
+- Keep the root workspace, desktop app, shared package, and backend package aligned on the same scaffold version unless a subpackage is intentionally split.
+- Use semantic versioning once real feature delivery starts.
+- For now, `0.1.0` represents the initial scaffold.
 
-## Archive revision checklist
+## Release checklist
 
-1. Update the docs that changed.
-2. Update `CHANGELOG.md`.
-3. Keep `README.md` and `docs/INDEX.md` aligned.
-4. Confirm the repository still contains only archive material.
-5. Commit and push the revision.
+1. Run `npm run check`.
+2. Run `npm run build`.
+3. Run `python -m pytest apps/backend/tests -q`.
+4. Update `CHANGELOG.md`.
+5. Update docs if the structure changes.
+6. Commit and push the scaffold revision.
 
-## Future note
+## Release notes
 
-- If the repository becomes runnable again, replace this archive policy with a standard release policy and version the runtime/backends together.
+- Add a changelog entry for every meaningful scaffold change.
+- Keep package manifests and docs consistent.
+- Once features land, use tags and release notes for user-visible milestones.

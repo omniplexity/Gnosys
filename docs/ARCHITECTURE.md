@@ -24,6 +24,12 @@ The architecture should support:
 - Policy and Permissions Layer
 - Persistence Layer
 
+Current scaffold mapping:
+
+- `apps/desktop/` owns the desktop application shell
+- `apps/backend/` owns the backend runtime scaffold
+- `packages/shared/` owns shared domain models and seed data
+
 ## 3. Desktop Application Shell
 
 Responsibilities:
