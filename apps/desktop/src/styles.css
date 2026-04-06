@@ -39,6 +39,10 @@ button {
   cursor: pointer;
 }
 
+input {
+  font: inherit;
+}
+
 p {
   margin: 0;
   color: var(--muted);
@@ -215,6 +219,46 @@ p {
 .bottom {
   margin-top: 16px;
   padding: 10px;
+}
+
+.event-panel {
+  margin-top: 16px;
+}
+
+.event-controls {
+  display: flex;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.event-controls input {
+  flex: 1;
+  min-width: 0;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+}
+
+.primary-action {
+  padding: 14px 18px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(141, 212, 197, 0.18), rgba(216, 179, 106, 0.18));
+  border: 1px solid rgba(141, 212, 197, 0.3);
+}
+
+.event-hint {
+  margin-top: 10px;
+}
+
+.error-banner {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(179, 66, 66, 0.12);
+  border: 1px solid rgba(179, 66, 66, 0.28);
+  color: #ffb7b7;
 }
 
 .tabs {
