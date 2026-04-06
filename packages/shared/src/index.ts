@@ -26,6 +26,42 @@ export interface Agent {
   status: AgentStatus;
 }
 
+export interface Project {
+  id: string;
+  name: string;
+  summary: string;
+  status: 'Active' | 'Planned' | 'Archived';
+  owner: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Skill {
+  id: string;
+  name: string;
+  description: string;
+  scope: 'workspace' | 'project' | 'session' | 'user';
+  version: string;
+  source_type: 'authored' | 'learned';
+  status: 'draft' | 'active' | 'archived';
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Schedule {
+  id: string;
+  name: string;
+  target_type: 'task' | 'project' | 'skill' | 'orchestration';
+  target_ref: string;
+  schedule_expression: string;
+  timezone: string;
+  enabled: boolean;
+  last_run_at: string | null;
+  next_run_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface TaskRun {
   id: string;
   task_id: string;
@@ -153,6 +189,68 @@ export const seedAgents: Agent[] = [
   { id: 'agent-005', name: 'Memory Steward', role: 'Memory policies and write-back', status: 'Idle' },
   { id: 'agent-006', name: 'Critic / Evaluator', role: 'Review and validation', status: 'Idle' },
   { id: 'agent-007', name: 'Operations / Scheduler', role: 'Scheduling and control', status: 'Idle' }
+];
+
+export const seedProjects: Project[] = [
+  {
+    id: 'project-001',
+    name: 'Core Console',
+    summary: 'Foundation workspace for the desktop, backend, memory, and orchestration layers.',
+    status: 'Active',
+    owner: 'Gnosys',
+    created_at: '2026-04-06T00:00:00Z',
+    updated_at: '2026-04-06T00:00:00Z'
+  },
+  {
+    id: 'project-002',
+    name: 'Phase 4 CRUD',
+    summary: 'Implement editable surfaces for tasks, projects, agents, skills, and schedules.',
+    status: 'Planned',
+    owner: 'Gnosys',
+    created_at: '2026-04-06T00:00:00Z',
+    updated_at: '2026-04-06T00:00:00Z'
+  }
+];
+
+export const seedSkills: Skill[] = [
+  {
+    id: 'skill-001',
+    name: 'Persistence Inspector',
+    description: 'Inspect SQLite state, event logs, and runtime runs for consistency.',
+    scope: 'workspace',
+    version: '0.1.0',
+    source_type: 'authored',
+    status: 'active',
+    created_at: '2026-04-06T00:00:00Z',
+    updated_at: '2026-04-06T00:00:00Z'
+  },
+  {
+    id: 'skill-002',
+    name: 'Run Planner',
+    description: 'Decompose objectives into bounded steps and specialist responsibilities.',
+    scope: 'workspace',
+    version: '0.1.0',
+    source_type: 'authored',
+    status: 'active',
+    created_at: '2026-04-06T00:00:00Z',
+    updated_at: '2026-04-06T00:00:00Z'
+  }
+];
+
+export const seedSchedules: Schedule[] = [
+  {
+    id: 'schedule-001',
+    name: 'Daily integrity check',
+    target_type: 'skill',
+    target_ref: 'skill-001',
+    schedule_expression: 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR;BYHOUR=9;BYMINUTE=0',
+    timezone: 'America/New_York',
+    enabled: true,
+    last_run_at: null,
+    next_run_at: null,
+    created_at: '2026-04-06T00:00:00Z',
+    updated_at: '2026-04-06T00:00:00Z'
+  }
 ];
 
 export const seedMemoryLayers: MemoryLayer[] = [

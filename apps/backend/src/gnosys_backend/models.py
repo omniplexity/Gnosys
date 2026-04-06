@@ -34,6 +34,20 @@ class TaskRecord(BaseModel):
     priority: str
 
 
+class TaskCreateRequest(BaseModel):
+    title: str = Field(min_length=1)
+    summary: str = Field(default="")
+    status: str = Field(default="Inbox")
+    priority: str = Field(default="Medium")
+
+
+class TaskUpdateRequest(BaseModel):
+    title: str = Field(min_length=1)
+    summary: str = Field(default="")
+    status: str = Field(default="Inbox")
+    priority: str = Field(default="Medium")
+
+
 class TaskRunRecord(BaseModel):
     id: str
     task_id: str
@@ -54,6 +68,18 @@ class AgentRecord(BaseModel):
     name: str
     role: str
     status: str
+
+
+class AgentCreateRequest(BaseModel):
+    name: str = Field(min_length=1)
+    role: str = Field(default="")
+    status: str = Field(default="Idle")
+
+
+class AgentUpdateRequest(BaseModel):
+    name: str = Field(min_length=1)
+    role: str = Field(default="")
+    status: str = Field(default="Idle")
 
 
 class AgentRunRecord(BaseModel):
@@ -81,6 +107,132 @@ class MemoryLayerRecord(BaseModel):
     name: str
     description: str
     score: float
+
+
+class ProjectListItem(BaseModel):
+    id: str
+    name: str
+    summary: str
+    status: str
+    owner: str
+    created_at: str
+    updated_at: str
+
+
+class SkillListItem(BaseModel):
+    id: str
+    name: str
+    description: str
+    scope: str
+    version: str
+    source_type: str
+    status: str
+    created_at: str
+    updated_at: str
+
+
+class ScheduleListItem(BaseModel):
+    id: str
+    name: str
+    target_type: str
+    target_ref: str
+    schedule_expression: str
+    timezone: str
+    enabled: bool
+    last_run_at: str | None = None
+    next_run_at: str | None = None
+    created_at: str
+    updated_at: str
+
+
+class ProjectRecord(BaseModel):
+    id: str
+    name: str
+    summary: str
+    status: str
+    owner: str
+    created_at: str
+    updated_at: str
+
+
+class ProjectCreateRequest(BaseModel):
+    name: str = Field(min_length=1)
+    summary: str = Field(default="")
+    status: str = Field(default="Planned")
+    owner: str = Field(default="Gnosys")
+
+
+class ProjectUpdateRequest(BaseModel):
+    name: str = Field(min_length=1)
+    summary: str = Field(default="")
+    status: str = Field(default="Planned")
+    owner: str = Field(default="Gnosys")
+
+
+class SkillRecord(BaseModel):
+    id: str
+    name: str
+    description: str
+    scope: str
+    version: str
+    source_type: str
+    status: str
+    created_at: str
+    updated_at: str
+
+
+class SkillCreateRequest(BaseModel):
+    name: str = Field(min_length=1)
+    description: str = Field(default="")
+    scope: str = Field(default="workspace")
+    version: str = Field(default="0.1.0")
+    source_type: str = Field(default="authored")
+    status: str = Field(default="draft")
+
+
+class SkillUpdateRequest(BaseModel):
+    name: str = Field(min_length=1)
+    description: str = Field(default="")
+    scope: str = Field(default="workspace")
+    version: str = Field(default="0.1.0")
+    source_type: str = Field(default="authored")
+    status: str = Field(default="draft")
+
+
+class ScheduleRecord(BaseModel):
+    id: str
+    name: str
+    target_type: str
+    target_ref: str
+    schedule_expression: str
+    timezone: str
+    enabled: bool
+    last_run_at: str | None = None
+    next_run_at: str | None = None
+    created_at: str
+    updated_at: str
+
+
+class ScheduleCreateRequest(BaseModel):
+    name: str = Field(min_length=1)
+    target_type: str = Field(min_length=1)
+    target_ref: str = Field(min_length=1)
+    schedule_expression: str = Field(min_length=1)
+    timezone: str = Field(default="America/New_York")
+    enabled: bool = Field(default=True)
+    last_run_at: str | None = None
+    next_run_at: str | None = None
+
+
+class ScheduleUpdateRequest(BaseModel):
+    name: str = Field(min_length=1)
+    target_type: str = Field(min_length=1)
+    target_ref: str = Field(min_length=1)
+    schedule_expression: str = Field(min_length=1)
+    timezone: str = Field(default="America/New_York")
+    enabled: bool = Field(default=True)
+    last_run_at: str | None = None
+    next_run_at: str | None = None
 
 
 class MemoryItemRecord(BaseModel):
@@ -189,6 +341,9 @@ class WorkspaceSnapshotResponse(BaseModel):
     workspace: WorkspaceSummary
     tasks: list[TaskRecord]
     agents: list[AgentRecord]
+    projects: list[ProjectListItem]
+    skills: list[SkillListItem]
+    schedules: list[ScheduleListItem]
     memory_layers: list[MemoryLayerRecord]
     memory_items: list[MemoryItemRecord]
     task_runs: list[TaskRunRecord]

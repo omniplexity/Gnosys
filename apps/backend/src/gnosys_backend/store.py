@@ -55,6 +55,58 @@ AGENT_SEED = [
     {"id": "agent-007", "name": "Operations / Scheduler", "role": "Scheduling and control", "status": "Idle"},
 ]
 
+PROJECT_SEED = [
+    {
+        "id": "project-001",
+        "name": "Core Console",
+        "summary": "Foundation workspace for the desktop, backend, memory, and orchestration layers.",
+        "status": "Active",
+        "owner": "Gnosys",
+    },
+    {
+        "id": "project-002",
+        "name": "Phase 4 CRUD",
+        "summary": "Implement editable surfaces for tasks, projects, agents, skills, and schedules.",
+        "status": "Planned",
+        "owner": "Gnosys",
+    },
+]
+
+SKILL_SEED = [
+    {
+        "id": "skill-001",
+        "name": "Persistence Inspector",
+        "description": "Inspect SQLite state, event logs, and runtime runs for consistency.",
+        "scope": "workspace",
+        "version": "0.1.0",
+        "source_type": "authored",
+        "status": "active",
+    },
+    {
+        "id": "skill-002",
+        "name": "Run Planner",
+        "description": "Decompose objectives into bounded steps and specialist responsibilities.",
+        "scope": "workspace",
+        "version": "0.1.0",
+        "source_type": "authored",
+        "status": "active",
+    },
+]
+
+SCHEDULE_SEED = [
+    {
+        "id": "schedule-001",
+        "name": "Daily integrity check",
+        "target_type": "skill",
+        "target_ref": "skill-001",
+        "schedule_expression": "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR;BYHOUR=9;BYMINUTE=0",
+        "timezone": "America/New_York",
+        "enabled": 1,
+        "last_run_at": None,
+        "next_run_at": None,
+    }
+]
+
 MEMORY_SEED = [
     {
         "id": "memory-active",
@@ -141,6 +193,42 @@ CREATE TABLE IF NOT EXISTS agents (
     name TEXT NOT NULL,
     role TEXT NOT NULL,
     status TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS projects (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    status TEXT NOT NULL,
+    owner TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS skills (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL,
+    scope TEXT NOT NULL,
+    version TEXT NOT NULL,
+    source_type TEXT NOT NULL,
+    status TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS schedules (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    target_type TEXT NOT NULL,
+    target_ref TEXT NOT NULL,
+    schedule_expression TEXT NOT NULL,
+    timezone TEXT NOT NULL,
+    enabled INTEGER NOT NULL,
+    last_run_at TEXT,
+    next_run_at TEXT,
+    created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
 
@@ -280,6 +368,60 @@ class GnosysStore:
         )
         connection.executemany(
             """
+            INSERT OR REPLACE INTO projects(id, name, summary, status, owner, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (item["id"], item["name"], item["summary"], item["status"], item["owner"], timestamp, timestamp)
+                for item in PROJECT_SEED
+            ],
+        )
+        connection.executemany(
+            """
+            INSERT OR REPLACE INTO skills(id, name, description, scope, version, source_type, status, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    item["id"],
+                    item["name"],
+                    item["description"],
+                    item["scope"],
+                    item["version"],
+                    item["source_type"],
+                    item["status"],
+                    timestamp,
+                    timestamp,
+                )
+                for item in SKILL_SEED
+            ],
+        )
+        connection.executemany(
+            """
+            INSERT OR REPLACE INTO schedules(
+                id, name, target_type, target_ref, schedule_expression, timezone, enabled, last_run_at, next_run_at, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    item["id"],
+                    item["name"],
+                    item["target_type"],
+                    item["target_ref"],
+                    item["schedule_expression"],
+                    item["timezone"],
+                    item["enabled"],
+                    item["last_run_at"],
+                    item["next_run_at"],
+                    timestamp,
+                    timestamp,
+                )
+                for item in SCHEDULE_SEED
+            ],
+        )
+        connection.executemany(
+            """
             INSERT OR REPLACE INTO memory_layers(id, name, description, score, updated_at)
             VALUES (?, ?, ?, ?, ?)
             """,
@@ -348,6 +490,39 @@ class GnosysStore:
             "priority": priority,
         }
 
+    def update_task(
+        self,
+        task_id: str,
+        *,
+        title: str,
+        summary: str,
+        status: str,
+        priority: str,
+    ) -> dict[str, Any]:
+        timestamp = utc_now()
+        with self.connect() as connection:
+            connection.execute(
+                "UPDATE tasks SET title = ?, summary = ?, status = ?, priority = ?, updated_at = ? WHERE id = ?",
+                (
+                    title.strip() or "Untitled task",
+                    summary.strip() or title.strip() or "Untitled task",
+                    status,
+                    priority,
+                    timestamp,
+                    task_id,
+                ),
+            )
+            connection.commit()
+        task = self.get_task(task_id)
+        if task is None:
+            raise KeyError(task_id)
+        return task
+
+    def delete_task(self, task_id: str) -> None:
+        with self.connect() as connection:
+            connection.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+            connection.commit()
+
     def update_task_status(self, task_id: str, status: str) -> dict[str, Any]:
         timestamp = utc_now()
         with self.connect() as connection:
@@ -388,12 +563,294 @@ class GnosysStore:
             ).fetchall()
             return [dict(row) for row in rows]
 
+    def get_agent(self, agent_id: str) -> dict[str, Any] | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT id, name, role, status FROM agents WHERE id = ?",
+                (agent_id,),
+            ).fetchone()
+            return dict(row) if row is not None else None
+
+    def create_agent(self, *, name: str, role: str, status: str = "Idle") -> dict[str, Any]:
+        timestamp = utc_now()
+        agent_id = f"agent-{uuid4().hex[:12]}"
+        with self.connect() as connection:
+            connection.execute(
+                "INSERT INTO agents(id, name, role, status, updated_at) VALUES (?, ?, ?, ?, ?)",
+                (agent_id, name.strip() or "Untitled agent", role.strip() or "Unassigned", status, timestamp),
+            )
+            connection.commit()
+        return self.get_agent(agent_id) or {}
+
+    def update_agent(self, agent_id: str, *, name: str, role: str, status: str) -> dict[str, Any]:
+        timestamp = utc_now()
+        with self.connect() as connection:
+            connection.execute(
+                "UPDATE agents SET name = ?, role = ?, status = ?, updated_at = ? WHERE id = ?",
+                (name.strip() or "Untitled agent", role.strip() or "Unassigned", status, timestamp, agent_id),
+            )
+            connection.commit()
+        agent = self.get_agent(agent_id)
+        if agent is None:
+            raise KeyError(agent_id)
+        return agent
+
+    def delete_agent(self, agent_id: str) -> None:
+        with self.connect() as connection:
+            connection.execute("DELETE FROM agents WHERE id = ?", (agent_id,))
+            connection.commit()
+
     def list_memory_layers(self) -> list[dict[str, Any]]:
         with self.connect() as connection:
             rows = connection.execute(
                 "SELECT id, name, description, score FROM memory_layers ORDER BY score DESC, id ASC"
             ).fetchall()
             return [dict(row) for row in rows]
+
+    def count_projects(self) -> int:
+        with self.connect() as connection:
+            row = connection.execute("SELECT COUNT(*) AS count FROM projects").fetchone()
+            return int(row["count"] if row is not None else 0)
+
+    def count_skills(self) -> int:
+        with self.connect() as connection:
+            row = connection.execute("SELECT COUNT(*) AS count FROM skills").fetchone()
+            return int(row["count"] if row is not None else 0)
+
+    def count_schedules(self) -> int:
+        with self.connect() as connection:
+            row = connection.execute("SELECT COUNT(*) AS count FROM schedules").fetchone()
+            return int(row["count"] if row is not None else 0)
+
+    def list_projects(self) -> list[dict[str, Any]]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT id, name, summary, status, owner, created_at, updated_at FROM projects ORDER BY updated_at DESC, id ASC"
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    def get_project(self, project_id: str) -> dict[str, Any] | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT id, name, summary, status, owner, created_at, updated_at FROM projects WHERE id = ?",
+                (project_id,),
+            ).fetchone()
+            return dict(row) if row is not None else None
+
+    def create_project(self, *, name: str, summary: str, status: str = "Planned", owner: str = "Gnosys") -> dict[str, Any]:
+        timestamp = utc_now()
+        project_id = f"project-{uuid4().hex[:12]}"
+        with self.connect() as connection:
+            connection.execute(
+                "INSERT INTO projects(id, name, summary, status, owner, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (project_id, name.strip() or "Untitled project", summary.strip() or name.strip() or "Untitled project", status, owner.strip() or "Gnosys", timestamp, timestamp),
+            )
+            connection.commit()
+        return self.get_project(project_id) or {}
+
+    def update_project(self, project_id: str, *, name: str, summary: str, status: str, owner: str) -> dict[str, Any]:
+        timestamp = utc_now()
+        with self.connect() as connection:
+            connection.execute(
+                "UPDATE projects SET name = ?, summary = ?, status = ?, owner = ?, updated_at = ? WHERE id = ?",
+                (name.strip() or "Untitled project", summary.strip() or name.strip() or "Untitled project", status, owner.strip() or "Gnosys", timestamp, project_id),
+            )
+            connection.commit()
+        project = self.get_project(project_id)
+        if project is None:
+            raise KeyError(project_id)
+        return project
+
+    def delete_project(self, project_id: str) -> None:
+        with self.connect() as connection:
+            connection.execute("DELETE FROM projects WHERE id = ?", (project_id,))
+            connection.commit()
+
+    def list_skills(self) -> list[dict[str, Any]]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT id, name, description, scope, version, source_type, status, created_at, updated_at FROM skills ORDER BY updated_at DESC, id ASC"
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    def get_skill(self, skill_id: str) -> dict[str, Any] | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT id, name, description, scope, version, source_type, status, created_at, updated_at FROM skills WHERE id = ?",
+                (skill_id,),
+            ).fetchone()
+            return dict(row) if row is not None else None
+
+    def create_skill(
+        self,
+        *,
+        name: str,
+        description: str,
+        scope: str = "workspace",
+        version: str = "0.1.0",
+        source_type: str = "authored",
+        status: str = "draft",
+    ) -> dict[str, Any]:
+        timestamp = utc_now()
+        skill_id = f"skill-{uuid4().hex[:12]}"
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO skills(id, name, description, scope, version, source_type, status, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (skill_id, name.strip() or "Untitled skill", description.strip() or name.strip() or "Untitled skill", scope, version, source_type, status, timestamp, timestamp),
+            )
+            connection.commit()
+        return self.get_skill(skill_id) or {}
+
+    def update_skill(
+        self,
+        skill_id: str,
+        *,
+        name: str,
+        description: str,
+        scope: str,
+        version: str,
+        source_type: str,
+        status: str,
+    ) -> dict[str, Any]:
+        timestamp = utc_now()
+        with self.connect() as connection:
+            connection.execute(
+                """
+                UPDATE skills
+                SET name = ?, description = ?, scope = ?, version = ?, source_type = ?, status = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (name.strip() or "Untitled skill", description.strip() or name.strip() or "Untitled skill", scope, version, source_type, status, timestamp, skill_id),
+            )
+            connection.commit()
+        skill = self.get_skill(skill_id)
+        if skill is None:
+            raise KeyError(skill_id)
+        return skill
+
+    def delete_skill(self, skill_id: str) -> None:
+        with self.connect() as connection:
+            connection.execute("DELETE FROM skills WHERE id = ?", (skill_id,))
+            connection.commit()
+
+    def list_schedules(self) -> list[dict[str, Any]]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT id, name, target_type, target_ref, schedule_expression, timezone, enabled, last_run_at, next_run_at, created_at, updated_at
+                FROM schedules
+                ORDER BY updated_at DESC, id ASC
+                """
+            ).fetchall()
+            results = []
+            for row in rows:
+                item = dict(row)
+                item["enabled"] = bool(item["enabled"])
+                results.append(item)
+            return results
+
+    def get_schedule(self, schedule_id: str) -> dict[str, Any] | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT id, name, target_type, target_ref, schedule_expression, timezone, enabled, last_run_at, next_run_at, created_at, updated_at
+                FROM schedules
+                WHERE id = ?
+                """,
+                (schedule_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            item = dict(row)
+            item["enabled"] = bool(item["enabled"])
+            return item
+
+    def create_schedule(
+        self,
+        *,
+        name: str,
+        target_type: str,
+        target_ref: str,
+        schedule_expression: str,
+        timezone: str,
+        enabled: bool = True,
+        last_run_at: str | None = None,
+        next_run_at: str | None = None,
+    ) -> dict[str, Any]:
+        timestamp = utc_now()
+        schedule_id = f"schedule-{uuid4().hex[:12]}"
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO schedules(
+                    id, name, target_type, target_ref, schedule_expression, timezone, enabled, last_run_at, next_run_at, created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    schedule_id,
+                    name.strip() or "Untitled schedule",
+                    target_type,
+                    target_ref,
+                    schedule_expression,
+                    timezone,
+                    int(enabled),
+                    last_run_at,
+                    next_run_at,
+                    timestamp,
+                    timestamp,
+                ),
+            )
+            connection.commit()
+        return self.get_schedule(schedule_id) or {}
+
+    def update_schedule(
+        self,
+        schedule_id: str,
+        *,
+        name: str,
+        target_type: str,
+        target_ref: str,
+        schedule_expression: str,
+        timezone: str,
+        enabled: bool,
+        last_run_at: str | None = None,
+        next_run_at: str | None = None,
+    ) -> dict[str, Any]:
+        timestamp = utc_now()
+        with self.connect() as connection:
+            connection.execute(
+                """
+                UPDATE schedules
+                SET name = ?, target_type = ?, target_ref = ?, schedule_expression = ?, timezone = ?, enabled = ?, last_run_at = ?, next_run_at = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (
+                    name.strip() or "Untitled schedule",
+                    target_type,
+                    target_ref,
+                    schedule_expression,
+                    timezone,
+                    int(enabled),
+                    last_run_at,
+                    next_run_at,
+                    timestamp,
+                    schedule_id,
+                ),
+            )
+            connection.commit()
+        schedule = self.get_schedule(schedule_id)
+        if schedule is None:
+            raise KeyError(schedule_id)
+        return schedule
+
+    def delete_schedule(self, schedule_id: str) -> None:
+        with self.connect() as connection:
+            connection.execute("DELETE FROM schedules WHERE id = ?", (schedule_id,))
+            connection.commit()
 
     def list_memory_items(
         self,
@@ -870,6 +1327,9 @@ class GnosysStore:
         workspace = self.get_workspace_state()
         tasks = self.list_tasks()
         agents = self.list_agents()
+        projects = self.list_projects()
+        skills = self.list_skills()
+        schedules = self.list_schedules()
         memory_layers = self.list_memory_layers()
         memory_items = self.list_memory_items(limit=10)
         task_runs = self.list_task_runs(limit=10)
@@ -886,6 +1346,9 @@ class GnosysStore:
             },
             "tasks": tasks,
             "agents": agents,
+            "projects": projects,
+            "skills": skills,
+            "schedules": schedules,
             "memory_layers": memory_layers,
             "memory_items": memory_items,
             "task_runs": task_runs,
@@ -894,6 +1357,9 @@ class GnosysStore:
             "counts": {
                 "tasks": len(tasks),
                 "agents": len(agents),
+                "projects": self.count_projects(),
+                "skills": self.count_skills(),
+                "schedules": self.count_schedules(),
                 "memory_layers": len(memory_layers),
                 "memory_items": self.count_memory_items(),
                 "task_runs": self.count_task_runs(),

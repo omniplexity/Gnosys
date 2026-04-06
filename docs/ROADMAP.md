@@ -59,16 +59,16 @@ Exit criteria:
 
 ## Phase 4 - CRUD surfaces
 
-- tasks
-- projects
-- agents
-- skills
-- schedules
+- task editing, project management, agent administration, skill management, and schedule control
+- list/create/update/delete flows for the core operational entities
+- inline desktop forms backed by the same SQLite store
+- event logging for entity lifecycle changes
 
 Exit criteria:
 
-- core entities can be created and edited through the UI
+- core entities can be created, edited, and removed through the UI
 - entity state remains consistent with the backend store
+- the CRUD workspace is the final major foundation layer before product specialization
 
 ## Notes
 

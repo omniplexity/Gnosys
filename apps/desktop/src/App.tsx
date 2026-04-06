@@ -3,12 +3,18 @@ import {
   seedAgents,
   seedMemoryItems,
   seedMemoryLayers,
+  seedProjects,
+  seedSchedules,
+  seedSkills,
   seedTasks,
   workspaceSummary,
   type Agent,
   type AgentRun,
   type MemoryItem,
   type MemoryLayer,
+  type Project,
+  type Schedule,
+  type Skill,
   type Task,
   type TaskRun
 } from '@gnosys/shared';
@@ -26,6 +32,9 @@ type WorkspaceSnapshot = {
   };
   tasks: Task[];
   agents: Agent[];
+  projects: Project[];
+  skills: Skill[];
+  schedules: Schedule[];
   memory_layers: MemoryLayer[];
   memory_items: MemoryItem[];
   task_runs: TaskRun[];
@@ -40,6 +49,9 @@ type WorkspaceSnapshot = {
   counts: {
     tasks: number;
     agents: number;
+    projects: number;
+    skills: number;
+    schedules: number;
     memory_layers: number;
     memory_items: number;
     task_runs: number;
@@ -70,6 +82,8 @@ type LaunchResponse = {
   summary: string;
 };
 
+type CrudDraft = Record<string, string | boolean>;
+
 const fallbackSnapshot: WorkspaceSnapshot = {
   workspace: {
     name: workspaceSummary.name,
@@ -80,6 +94,9 @@ const fallbackSnapshot: WorkspaceSnapshot = {
   },
   tasks: seedTasks,
   agents: seedAgents,
+  projects: seedProjects,
+  skills: seedSkills,
+  schedules: seedSchedules,
   memory_layers: seedMemoryLayers,
   memory_items: seedMemoryItems,
   task_runs: [],
@@ -88,6 +105,9 @@ const fallbackSnapshot: WorkspaceSnapshot = {
   counts: {
     tasks: seedTasks.length,
     agents: seedAgents.length,
+    projects: seedProjects.length,
+    skills: seedSkills.length,
+    schedules: seedSchedules.length,
     memory_layers: seedMemoryLayers.length,
     memory_items: seedMemoryItems.length,
     task_runs: 0,
@@ -95,6 +115,11 @@ const fallbackSnapshot: WorkspaceSnapshot = {
     events: 0
   }
 };
+
+type CrudKind = 'tasks' | 'projects' | 'agents' | 'skills' | 'schedules';
+const NEW_ITEM_SENTINEL = '__new__';
+
+const crudKinds: CrudKind[] = ['tasks', 'projects', 'agents', 'skills', 'schedules'];
 
 async function loadSnapshot(): Promise<WorkspaceSnapshot> {
   const response = await fetch('/api/state');
@@ -152,6 +177,108 @@ function buildRunTree(agentRuns: AgentRun[]): AgentRun[] {
   });
 }
 
+function getCrudItems(snapshot: WorkspaceSnapshot, kind: CrudKind): Array<Record<string, unknown> & { id: string }> {
+  switch (kind) {
+    case 'tasks':
+      return snapshot.tasks as unknown as Array<Record<string, unknown> & { id: string }>;
+    case 'projects':
+      return snapshot.projects as unknown as Array<Record<string, unknown> & { id: string }>;
+    case 'agents':
+      return snapshot.agents as unknown as Array<Record<string, unknown> & { id: string }>;
+    case 'skills':
+      return snapshot.skills as unknown as Array<Record<string, unknown> & { id: string }>;
+    case 'schedules':
+      return snapshot.schedules as unknown as Array<Record<string, unknown> & { id: string }>;
+  }
+}
+
+function buildCrudDraft(kind: CrudKind, item: unknown): CrudDraft {
+  if (!item || typeof item !== 'object') {
+    return {};
+  }
+  return { ...item } as CrudDraft;
+}
+
+function normalizeCrudDraft(kind: CrudKind, draft: CrudDraft): Record<string, unknown> {
+  switch (kind) {
+    case 'tasks':
+      return {
+        title: String(draft.title ?? ''),
+        summary: String(draft.summary ?? ''),
+        status: String(draft.status ?? 'Inbox'),
+        priority: String(draft.priority ?? 'Medium')
+      };
+    case 'projects':
+      return {
+        name: String(draft.name ?? ''),
+        summary: String(draft.summary ?? ''),
+        status: String(draft.status ?? 'Planned'),
+        owner: String(draft.owner ?? 'Gnosys')
+      };
+    case 'agents':
+      return {
+        name: String(draft.name ?? ''),
+        role: String(draft.role ?? ''),
+        status: String(draft.status ?? 'Idle')
+      };
+    case 'skills':
+      return {
+        name: String(draft.name ?? ''),
+        description: String(draft.description ?? ''),
+        scope: String(draft.scope ?? 'workspace'),
+        version: String(draft.version ?? '0.1.0'),
+        source_type: String(draft.source_type ?? 'authored'),
+        status: String(draft.status ?? 'draft')
+      };
+    case 'schedules':
+      return {
+        name: String(draft.name ?? ''),
+        target_type: String(draft.target_type ?? 'skill'),
+        target_ref: String(draft.target_ref ?? ''),
+        schedule_expression: String(draft.schedule_expression ?? ''),
+        timezone: String(draft.timezone ?? 'America/New_York'),
+        enabled: Boolean(draft.enabled),
+        last_run_at: draft.last_run_at ? String(draft.last_run_at) : null,
+        next_run_at: draft.next_run_at ? String(draft.next_run_at) : null
+      };
+  }
+}
+
+function crudConfig(kind: CrudKind) {
+  switch (kind) {
+    case 'tasks':
+      return {
+        title: 'Tasks',
+        createLabel: 'Create task',
+        endpoint: '/api/tasks'
+      };
+    case 'projects':
+      return {
+        title: 'Projects',
+        createLabel: 'Create project',
+        endpoint: '/api/projects'
+      };
+    case 'agents':
+      return {
+        title: 'Agents',
+        createLabel: 'Create agent',
+        endpoint: '/api/agents'
+      };
+    case 'skills':
+      return {
+        title: 'Skills',
+        createLabel: 'Create skill',
+        endpoint: '/api/skills'
+      };
+    case 'schedules':
+      return {
+        title: 'Schedules',
+        createLabel: 'Create schedule',
+        endpoint: '/api/schedules'
+      };
+  }
+}
+
 export default function App() {
   const [activeSection, setActiveSection] = useState(navSections[0]);
   const [activeTask, setActiveTask] = useState(seedTasks[0].id);
@@ -170,6 +297,11 @@ export default function App() {
   const [launchState, setLaunchState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [launchError, setLaunchError] = useState<string | null>(null);
   const [launchResponse, setLaunchResponse] = useState<LaunchResponse | null>(null);
+  const [crudKind, setCrudKind] = useState<CrudKind>('tasks');
+  const [crudSelectionId, setCrudSelectionId] = useState<string>('');
+  const [crudDraft, setCrudDraft] = useState<CrudDraft>({});
+  const [crudState, setCrudState] = useState<'idle' | 'saving' | 'error'>('idle');
+  const [crudError, setCrudError] = useState<string | null>(null);
 
   async function refreshSnapshot() {
     const state = await loadSnapshot();
@@ -204,6 +336,76 @@ export default function App() {
       setLaunchError(error instanceof Error ? error.message : 'Failed to launch orchestration');
       setLaunchState('error');
     }
+  }
+
+  async function saveCrudItem() {
+    const endpoint = crudConfig(crudKind).endpoint;
+    const normalized = normalizeCrudDraft(crudKind, crudDraft);
+    const creating = crudSelectionId === '' || crudSelectionId === NEW_ITEM_SENTINEL;
+    const method = creating ? 'POST' : 'PATCH';
+    const requestUrl = creating ? endpoint : `${endpoint}/${crudSelectionId}`;
+    setCrudState('saving');
+    setCrudError(null);
+
+    try {
+      const response = await fetch(requestUrl, {
+        method,
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(normalized)
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to save ${crudKind}: ${response.status}`);
+      }
+
+      const saved = (await response.json()) as { id: string };
+      const nextSnapshot = await refreshSnapshot();
+      const items = getCrudItems(nextSnapshot, crudKind) as Array<{ id: string }>;
+      const nextSelection = saved.id || items[0]?.id || '';
+      setCrudSelectionId(nextSelection);
+      setCrudDraft(buildCrudDraft(crudKind, items.find((item) => item.id === nextSelection) ?? items[0] ?? {}));
+      setCrudState('idle');
+      setActiveTab('Logs');
+    } catch (error) {
+      setCrudError(error instanceof Error ? error.message : 'Failed to save item');
+      setCrudState('error');
+    }
+  }
+
+  async function deleteCrudItem() {
+    if (!crudSelectionId || crudSelectionId === NEW_ITEM_SENTINEL) {
+      return;
+    }
+    const endpoint = crudConfig(crudKind).endpoint;
+    setCrudState('saving');
+    setCrudError(null);
+
+    try {
+      const response = await fetch(`${endpoint}/${crudSelectionId}`, {
+        method: 'DELETE'
+      });
+      if (!response.ok && response.status !== 204) {
+        throw new Error(`Failed to delete ${crudKind}: ${response.status}`);
+      }
+      const nextSnapshot = await refreshSnapshot();
+      const items = getCrudItems(nextSnapshot, crudKind) as Array<{ id: string }>;
+      const nextSelection = items[0]?.id || '';
+      setCrudSelectionId(nextSelection);
+      setCrudDraft(buildCrudDraft(crudKind, items[0] ?? {}));
+      setCrudState('idle');
+    } catch (error) {
+      setCrudError(error instanceof Error ? error.message : 'Failed to delete item');
+      setCrudState('error');
+    }
+  }
+
+  function startNewCrudItem() {
+    setCrudSelectionId(NEW_ITEM_SENTINEL);
+    setCrudDraft({});
+    setCrudError(null);
+    setCrudState('idle');
   }
 
   useEffect(() => {
@@ -245,6 +447,19 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (crudSelectionId === NEW_ITEM_SENTINEL) {
+      return;
+    }
+    const items = getCrudItems(snapshot, crudKind) as Array<{ id: string }>;
+    const nextSelection = items.find((item) => item.id === crudSelectionId)?.id ?? items[0]?.id ?? '';
+    if (nextSelection !== crudSelectionId) {
+      setCrudSelectionId(nextSelection);
+    }
+    const selectedItem = items.find((item) => item.id === nextSelection) ?? items[0];
+    setCrudDraft(selectedItem ? buildCrudDraft(crudKind, selectedItem) : {});
+  }, [crudKind, snapshot, crudSelectionId]);
+
   const selectedTask = useMemo(
     () => snapshot.tasks.find((task) => task.id === activeTask) ?? snapshot.tasks[0] ?? fallbackSnapshot.tasks[0],
     [activeTask, snapshot.tasks]
@@ -254,6 +469,10 @@ export default function App() {
   const activeMemoryLayer = snapshot.memory_layers[0] ?? fallbackSnapshot.memory_layers[0];
   const currentRun = launchResponse?.task_run ?? snapshot.task_runs[0] ?? null;
   const currentRunTree = currentRun ? buildRunTree(snapshot.agent_runs.filter((run) => run.task_run_id === currentRun.id)) : [];
+  const activeCrudItems = getCrudItems(snapshot, crudKind);
+  const activeCrudItem = crudSelectionId && crudSelectionId !== NEW_ITEM_SENTINEL
+    ? activeCrudItems.find((item) => item.id === crudSelectionId) ?? null
+    : null;
 
   async function appendCheckpointEvent() {
     const response = await fetch('/api/events', {
@@ -459,6 +678,218 @@ export default function App() {
               ) : (
                 <p>Run details will appear here after launch.</p>
               )}
+            </div>
+          </div>
+        </section>
+
+        <section className="panel crud-panel">
+          <div className="panel-title">CRUD workspace</div>
+          <div className="crud-tabs">
+            {crudKinds.map((kind) => (
+              <button key={kind} className={kind === crudKind ? 'tab active' : 'tab'} onClick={() => setCrudKind(kind)}>
+                {crudConfig(kind).title}
+              </button>
+            ))}
+          </div>
+          <div className="crud-grid">
+            <div className="crud-list">
+              {activeCrudItems.map((item) => (
+                <button
+                  key={item.id}
+                  className={item.id === crudSelectionId ? 'run-row active' : 'run-row'}
+                  onClick={() => {
+                    setCrudSelectionId(item.id);
+                    setCrudDraft(buildCrudDraft(crudKind, item));
+                  }}
+                >
+                  <strong>{String(item.name ?? item.title ?? item.id)}</strong>
+                  <span>{String(item.status ?? '')}</span>
+                </button>
+              ))}
+              {activeCrudItems.length === 0 && <p>No {crudConfig(crudKind).title.toLowerCase()} yet.</p>}
+            </div>
+            <div className="crud-editor">
+              <div className="panel-title">{activeCrudItem ? 'Edit item' : 'Create item'}</div>
+              <div className="crud-form">
+                {crudKind === 'tasks' && (
+                  <>
+                    <label>
+                      Title
+                      <input value={String(crudDraft.title ?? '')} onChange={(event) => setCrudDraft((prev) => ({ ...prev, title: event.target.value }))} />
+                    </label>
+                    <label>
+                      Summary
+                      <textarea value={String(crudDraft.summary ?? '')} onChange={(event) => setCrudDraft((prev) => ({ ...prev, summary: event.target.value }))} />
+                    </label>
+                    <label>
+                      Status
+                      <select value={String(crudDraft.status ?? 'Inbox')} onChange={(event) => setCrudDraft((prev) => ({ ...prev, status: event.target.value }))}>
+                        <option>Inbox</option>
+                        <option>Planned</option>
+                        <option>Running</option>
+                        <option>Waiting</option>
+                        <option>Needs Approval</option>
+                        <option>Completed</option>
+                        <option>Failed</option>
+                      </select>
+                    </label>
+                    <label>
+                      Priority
+                      <select value={String(crudDraft.priority ?? 'Medium')} onChange={(event) => setCrudDraft((prev) => ({ ...prev, priority: event.target.value }))}>
+                        <option>Low</option>
+                        <option>Medium</option>
+                        <option>High</option>
+                        <option>Critical</option>
+                      </select>
+                    </label>
+                  </>
+                )}
+                {crudKind === 'projects' && (
+                  <>
+                    <label>
+                      Name
+                      <input value={String(crudDraft.name ?? '')} onChange={(event) => setCrudDraft((prev) => ({ ...prev, name: event.target.value }))} />
+                    </label>
+                    <label>
+                      Summary
+                      <textarea value={String(crudDraft.summary ?? '')} onChange={(event) => setCrudDraft((prev) => ({ ...prev, summary: event.target.value }))} />
+                    </label>
+                    <label>
+                      Status
+                      <select value={String(crudDraft.status ?? 'Planned')} onChange={(event) => setCrudDraft((prev) => ({ ...prev, status: event.target.value }))}>
+                        <option>Active</option>
+                        <option>Planned</option>
+                        <option>Archived</option>
+                      </select>
+                    </label>
+                    <label>
+                      Owner
+                      <input value={String(crudDraft.owner ?? '')} onChange={(event) => setCrudDraft((prev) => ({ ...prev, owner: event.target.value }))} />
+                    </label>
+                  </>
+                )}
+                {crudKind === 'agents' && (
+                  <>
+                    <label>
+                      Name
+                      <input value={String(crudDraft.name ?? '')} onChange={(event) => setCrudDraft((prev) => ({ ...prev, name: event.target.value }))} />
+                    </label>
+                    <label>
+                      Role
+                      <input value={String(crudDraft.role ?? '')} onChange={(event) => setCrudDraft((prev) => ({ ...prev, role: event.target.value }))} />
+                    </label>
+                    <label>
+                      Status
+                      <select value={String(crudDraft.status ?? 'Idle')} onChange={(event) => setCrudDraft((prev) => ({ ...prev, status: event.target.value }))}>
+                        <option>Idle</option>
+                        <option>Working</option>
+                        <option>Waiting</option>
+                        <option>Reviewing</option>
+                      </select>
+                    </label>
+                  </>
+                )}
+                {crudKind === 'skills' && (
+                  <>
+                    <label>
+                      Name
+                      <input value={String(crudDraft.name ?? '')} onChange={(event) => setCrudDraft((prev) => ({ ...prev, name: event.target.value }))} />
+                    </label>
+                    <label>
+                      Description
+                      <textarea value={String(crudDraft.description ?? '')} onChange={(event) => setCrudDraft((prev) => ({ ...prev, description: event.target.value }))} />
+                    </label>
+                    <label>
+                      Scope
+                      <select value={String(crudDraft.scope ?? 'workspace')} onChange={(event) => setCrudDraft((prev) => ({ ...prev, scope: event.target.value }))}>
+                        <option>workspace</option>
+                        <option>project</option>
+                        <option>session</option>
+                        <option>user</option>
+                      </select>
+                    </label>
+                    <label>
+                      Version
+                      <input value={String(crudDraft.version ?? '0.1.0')} onChange={(event) => setCrudDraft((prev) => ({ ...prev, version: event.target.value }))} />
+                    </label>
+                    <label>
+                      Source type
+                      <select value={String(crudDraft.source_type ?? 'authored')} onChange={(event) => setCrudDraft((prev) => ({ ...prev, source_type: event.target.value }))}>
+                        <option>authored</option>
+                        <option>learned</option>
+                      </select>
+                    </label>
+                    <label>
+                      Status
+                      <select value={String(crudDraft.status ?? 'draft')} onChange={(event) => setCrudDraft((prev) => ({ ...prev, status: event.target.value }))}>
+                        <option>draft</option>
+                        <option>active</option>
+                        <option>archived</option>
+                      </select>
+                    </label>
+                  </>
+                )}
+                {crudKind === 'schedules' && (
+                  <>
+                    <label>
+                      Name
+                      <input value={String(crudDraft.name ?? '')} onChange={(event) => setCrudDraft((prev) => ({ ...prev, name: event.target.value }))} />
+                    </label>
+                    <label>
+                      Target type
+                      <select value={String(crudDraft.target_type ?? 'skill')} onChange={(event) => setCrudDraft((prev) => ({ ...prev, target_type: event.target.value }))}>
+                        <option>task</option>
+                        <option>project</option>
+                        <option>skill</option>
+                        <option>orchestration</option>
+                      </select>
+                    </label>
+                    <label>
+                      Target ref
+                      <input value={String(crudDraft.target_ref ?? '')} onChange={(event) => setCrudDraft((prev) => ({ ...prev, target_ref: event.target.value }))} />
+                    </label>
+                    <label>
+                      Schedule expression
+                      <input value={String(crudDraft.schedule_expression ?? '')} onChange={(event) => setCrudDraft((prev) => ({ ...prev, schedule_expression: event.target.value }))} />
+                    </label>
+                    <label>
+                      Timezone
+                      <input value={String(crudDraft.timezone ?? 'America/New_York')} onChange={(event) => setCrudDraft((prev) => ({ ...prev, timezone: event.target.value }))} />
+                    </label>
+                    <label className="toggle-row">
+                      Enabled
+                      <input
+                        type="checkbox"
+                        checked={Boolean(crudDraft.enabled)}
+                        onChange={(event) => setCrudDraft((prev) => ({ ...prev, enabled: event.target.checked }))}
+                      />
+                    </label>
+                  </>
+                )}
+              </div>
+              <div className="crud-actions">
+                <button className="tab" onClick={() => startNewCrudItem()}>
+                  New item
+                </button>
+                <button className="primary-action" onClick={() => void saveCrudItem()}>
+                  {crudSelectionId && crudSelectionId !== NEW_ITEM_SENTINEL ? 'Save changes' : crudConfig(crudKind).createLabel}
+                </button>
+                <button
+                  className="tab"
+                  onClick={() => void deleteCrudItem()}
+                  disabled={!crudSelectionId || crudSelectionId === NEW_ITEM_SENTINEL}
+                >
+                  Delete
+                </button>
+              </div>
+              {crudError && <p className="error-banner">{crudError}</p>}
+              <p className="event-hint">
+                {crudState === 'saving'
+                  ? 'Saving...'
+                  : crudSelectionId && crudSelectionId !== NEW_ITEM_SENTINEL
+                    ? `Editing ${crudSelectionId}`
+                    : 'Creating a new item'}
+              </p>
             </div>
           </div>
         </section>
