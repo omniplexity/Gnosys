@@ -23,34 +23,59 @@ def test_health_endpoint(tmp_path: Path) -> None:
     assert response.json()["status"] == "healthy"
 
 
-def test_workspace_snapshot_has_seeded_state(tmp_path: Path) -> None:
+def test_state_includes_seeded_memory_items(tmp_path: Path) -> None:
     client = build_client(tmp_path)
 
     response = client.get("/api/state")
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["workspace"]["name"] == "Gnosys"
-    assert payload["counts"]["tasks"] >= 3
-    assert payload["counts"]["events"] >= 1
+    assert payload["counts"]["memory_items"] >= 3
+    assert any(item["state"] == "candidate" for item in payload["memory_items"])
 
 
-def test_event_append_persists_to_log(tmp_path: Path) -> None:
+def test_memory_retrieval_returns_trace_and_relevant_item(tmp_path: Path) -> None:
     client = build_client(tmp_path)
 
-    post_response = client.post(
-        "/api/events",
+    response = client.get("/api/memory/retrieve", params={"query": "persistence event log", "role": "orchestrator"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["role"] == "orchestrator"
+    assert payload["trace"][0]["stage"] == "normalize"
+    assert payload["items"][0]["title"] == "Phase 1 completed"
+    assert payload["items"][0]["score"] > 0
+
+
+def test_memory_ingest_and_consolidate_flow(tmp_path: Path) -> None:
+    client = build_client(tmp_path)
+
+    ingest_response = client.post(
+        "/api/memory/items",
         json={
-            "type": "task.updated",
-            "source": "planner",
-            "payload": {"task_id": "task-001", "status": "Running"},
+            "title": "Consolidation candidate",
+            "summary": "A candidate memory that should be promoted.",
+            "content": "A candidate memory that should be promoted once confidence is high enough.",
+            "provenance": "test-suite",
+            "source_ref": "tests/test_app.py",
+            "layer": "Semantic",
+            "scope": "workspace",
+            "confidence": 0.95,
+            "freshness": 0.91,
+            "tags": ["memory", "candidate"],
+            "state": "candidate",
         },
     )
 
-    assert post_response.status_code == 201
+    assert ingest_response.status_code == 201
 
-    get_response = client.get("/api/events?limit=5")
-    assert get_response.status_code == 200
-    events = get_response.json()
-    assert events[0]["type"] == "task.updated"
-    assert events[0]["payload"]["task_id"] == "task-001"
+    consolidate_response = client.post("/api/memory/consolidate")
+    assert consolidate_response.status_code == 200
+    consolidate_payload = consolidate_response.json()
+    assert consolidate_payload["reviewed"] >= 4
+    assert consolidate_payload["promoted"] >= 1
+
+    items_response = client.get("/api/memory/items", params={"limit": 10})
+    assert items_response.status_code == 200
+    items = items_response.json()
+    assert any(item["title"] == "Consolidation candidate" and item["state"] == "validated" for item in items)

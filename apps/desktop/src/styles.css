@@ -231,6 +231,13 @@ p {
   margin-top: 14px;
 }
 
+.memory-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) 160px 160px 160px;
+  gap: 12px;
+  margin-top: 14px;
+}
+
 .event-controls input {
   flex: 1;
   min-width: 0;
@@ -246,6 +253,14 @@ p {
   border-radius: 16px;
   background: linear-gradient(135deg, rgba(141, 212, 197, 0.18), rgba(216, 179, 106, 0.18));
   border: 1px solid rgba(141, 212, 197, 0.3);
+}
+
+.memory-controls select {
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
 }
 
 .event-hint {
@@ -281,6 +296,53 @@ p {
   color: var(--text);
 }
 
+.retrieval-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(260px, 0.6fr);
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.compact {
+  gap: 12px;
+}
+
+.memory-card,
+.trace-step {
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.02);
+  padding: 14px;
+}
+
+.memory-card-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+}
+
+.memory-card-top span,
+.memory-meta,
+.trace-step span {
+  color: var(--muted);
+}
+
+.memory-card p {
+  margin-top: 8px;
+}
+
+.memory-meta {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  font-size: 0.82rem;
+}
+
+.trace-panel {
+  padding-left: 6px;
+}
+
 @media (max-width: 1120px) {
   .shell {
     grid-template-columns: 1fr;
@@ -293,6 +355,11 @@ p {
 
   .metrics,
   .content-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .memory-controls,
+  .retrieval-grid {
     grid-template-columns: 1fr;
   }
 

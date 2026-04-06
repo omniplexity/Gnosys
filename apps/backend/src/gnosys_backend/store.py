@@ -71,6 +71,51 @@ MEMORY_SEED = [
     },
 ]
 
+MEMORY_ITEM_SEED = [
+    {
+        "id": "memory-item-001",
+        "layer": "Active Context",
+        "scope": "session",
+        "state": "validated",
+        "title": "Phase 1 completed",
+        "summary": "SQLite persistence and append-only event logging are live in the backend.",
+        "content": "Phase 1 finished with a persistent SQLite store, append-only events, and live desktop refreshes.",
+        "provenance": "phase-1-commit",
+        "source_ref": "commit:069ba04",
+        "confidence": 0.99,
+        "freshness": 0.96,
+        "tags": ["persistence", "events", "backend"],
+    },
+    {
+        "id": "memory-item-002",
+        "layer": "Semantic",
+        "scope": "workspace",
+        "state": "validated",
+        "title": "Phase 2 target",
+        "summary": "Build the memory engine with scoped retrieval and explanation traces.",
+        "content": "Phase 2 focuses on durable memory records, retrieval traceability, and consolidation rules.",
+        "provenance": "roadmap",
+        "source_ref": "docs/ROADMAP.md",
+        "confidence": 0.94,
+        "freshness": 0.9,
+        "tags": ["memory", "retrieval", "trace"],
+    },
+    {
+        "id": "memory-item-003",
+        "layer": "Episodic",
+        "scope": "project",
+        "state": "candidate",
+        "title": "Retrieval audit note",
+        "summary": "Inspect why a memory item was surfaced before it becomes durable.",
+        "content": "A surfaced memory should explain scope, layer bias, and score so the user can validate it.",
+        "provenance": "design-note",
+        "source_ref": "notes/session-2",
+        "confidence": 0.78,
+        "freshness": 0.84,
+        "tags": ["inspectability", "candidate", "retrieval"],
+    },
+]
+
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS workspace_state (
     key TEXT PRIMARY KEY,
@@ -100,6 +145,24 @@ CREATE TABLE IF NOT EXISTS memory_layers (
     description TEXT NOT NULL,
     score REAL NOT NULL,
     updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS memory_items (
+    id TEXT PRIMARY KEY,
+    layer TEXT NOT NULL,
+    scope TEXT NOT NULL,
+    state TEXT NOT NULL,
+    title TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    content TEXT NOT NULL,
+    provenance TEXT NOT NULL,
+    source_ref TEXT NOT NULL,
+    confidence REAL NOT NULL,
+    freshness REAL NOT NULL,
+    tags TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    last_accessed_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS events (
@@ -180,6 +243,35 @@ class GnosysStore:
             """,
             [(item["id"], item["name"], item["description"], item["score"], timestamp) for item in MEMORY_SEED],
         )
+        connection.executemany(
+            """
+            INSERT OR REPLACE INTO memory_items(
+                id, layer, scope, state, title, summary, content, provenance, source_ref,
+                confidence, freshness, tags, created_at, updated_at, last_accessed_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    item["id"],
+                    item["layer"],
+                    item["scope"],
+                    item["state"],
+                    item["title"],
+                    item["summary"],
+                    item["content"],
+                    item["provenance"],
+                    item["source_ref"],
+                    item["confidence"],
+                    item["freshness"],
+                    _encode(item["tags"]),
+                    timestamp,
+                    timestamp,
+                    None,
+                )
+                for item in MEMORY_ITEM_SEED
+            ],
+        )
 
     def get_workspace_state(self) -> dict[str, str]:
         with self.connect() as connection:
@@ -206,6 +298,134 @@ class GnosysStore:
                 "SELECT id, name, description, score FROM memory_layers ORDER BY score DESC, id ASC"
             ).fetchall()
             return [dict(row) for row in rows]
+
+    def list_memory_items(
+        self,
+        *,
+        limit: int = 50,
+        layer: str | None = None,
+        scope: str | None = None,
+        state: str | None = None,
+    ) -> list[dict[str, Any]]:
+        query = [
+            "SELECT id, layer, scope, state, title, summary, content, provenance, source_ref, confidence, freshness, tags, created_at, updated_at, last_accessed_at",
+            "FROM memory_items",
+        ]
+        params: list[Any] = []
+        conditions: list[str] = []
+        if layer:
+            conditions.append("layer = ?")
+            params.append(layer)
+        if scope:
+            conditions.append("scope = ?")
+            params.append(scope)
+        if state:
+            conditions.append("state = ?")
+            params.append(state)
+        if conditions:
+            query.append("WHERE " + " AND ".join(conditions))
+        query.append("ORDER BY updated_at DESC, created_at DESC, id ASC")
+        query.append("LIMIT ?")
+        params.append(limit)
+        sql = " ".join(query)
+
+        with self.connect() as connection:
+            rows = connection.execute(sql, params).fetchall()
+            return [
+                {
+                    **dict(row),
+                    "tags": _decode(row["tags"]),
+                }
+                for row in rows
+            ]
+
+    def count_memory_items(self) -> int:
+        with self.connect() as connection:
+            row = connection.execute("SELECT COUNT(*) AS count FROM memory_items").fetchone()
+            return int(row["count"] if row is not None else 0)
+
+    def get_memory_item(self, item_id: str) -> dict[str, Any] | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT id, layer, scope, state, title, summary, content, provenance, source_ref,
+                       confidence, freshness, tags, created_at, updated_at, last_accessed_at
+                FROM memory_items
+                WHERE id = ?
+                """,
+                (item_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            return {
+                **dict(row),
+                "tags": _decode(row["tags"]),
+            }
+
+    def upsert_memory_item(self, item: dict[str, Any]) -> dict[str, Any]:
+        timestamp = utc_now()
+        tags = item.get("tags", [])
+        with self.connect() as connection:
+            existing = self.get_memory_item(item["id"])
+            created_at = existing["created_at"] if existing is not None else timestamp
+            last_accessed_at = item.get("last_accessed_at", existing["last_accessed_at"] if existing else None)
+            connection.execute(
+                """
+                INSERT OR REPLACE INTO memory_items(
+                    id, layer, scope, state, title, summary, content, provenance, source_ref,
+                    confidence, freshness, tags, created_at, updated_at, last_accessed_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    item["id"],
+                    item["layer"],
+                    item["scope"],
+                    item["state"],
+                    item["title"],
+                    item["summary"],
+                    item.get("content", item["summary"]),
+                    item["provenance"],
+                    item["source_ref"],
+                    item["confidence"],
+                    item["freshness"],
+                    _encode(tags),
+                    created_at,
+                    timestamp,
+                    last_accessed_at,
+                ),
+            )
+            connection.commit()
+        saved = self.get_memory_item(item["id"])
+        if saved is None:
+            raise RuntimeError(f"Unable to persist memory item {item['id']}")
+        return saved
+
+    def update_memory_item_state(self, item_id: str, state: str) -> dict[str, Any]:
+        timestamp = utc_now()
+        with self.connect() as connection:
+            connection.execute(
+                """
+                UPDATE memory_items
+                SET state = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (state, timestamp, item_id),
+            )
+            connection.commit()
+        item = self.get_memory_item(item_id)
+        if item is None:
+            raise KeyError(item_id)
+        return item
+
+    def touch_memory_item(self, item_id: str) -> None:
+        timestamp = utc_now()
+        with self.connect() as connection:
+            connection.execute(
+                "UPDATE memory_items SET last_accessed_at = ?, updated_at = ? WHERE id = ?",
+                (timestamp, timestamp, item_id),
+            )
+            connection.commit()
 
     def list_events(self, limit: int = 25) -> list[dict[str, Any]]:
         with self.connect() as connection:
@@ -271,6 +491,7 @@ class GnosysStore:
         tasks = self.list_tasks()
         agents = self.list_agents()
         memory_layers = self.list_memory_layers()
+        memory_items = self.list_memory_items(limit=10)
         recent_events = self.list_events()
 
         return {
@@ -284,11 +505,13 @@ class GnosysStore:
             "tasks": tasks,
             "agents": agents,
             "memory_layers": memory_layers,
+            "memory_items": memory_items,
             "recent_events": recent_events,
             "counts": {
                 "tasks": len(tasks),
                 "agents": len(agents),
                 "memory_layers": len(memory_layers),
+                "memory_items": self.count_memory_items(),
                 "events": self.count_events(),
             },
         }

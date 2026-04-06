@@ -11,12 +11,17 @@ from .models import (
     EventCreateRequest,
     EventRecord,
     HealthResponse,
+    MemoryConsolidationResponse,
+    MemoryIngestRequest,
+    MemoryItemRecord,
     MemoryLayerRecord,
+    MemoryRetrievalResponse,
     StatusResponse,
     TaskRecord,
     WorkspaceSnapshotResponse,
     WorkspaceSummary,
 )
+from .memory import MemoryEngine
 from .store import GnosysStore
 
 
@@ -48,6 +53,7 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
 
     active_store = store or _build_store()
     active_store.initialize()
+    memory_engine = MemoryEngine(active_store)
 
     @app.get("/health", response_model=HealthResponse)
     def health() -> HealthResponse:
@@ -80,6 +86,51 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
     @app.get("/api/memory", response_model=list[MemoryLayerRecord])
     def memory_layers() -> list[MemoryLayerRecord]:
         return [MemoryLayerRecord(**layer) for layer in active_store.list_memory_layers()]
+
+    @app.get("/api/memory/items", response_model=list[MemoryItemRecord])
+    def memory_items(limit: int = 25) -> list[MemoryItemRecord]:
+        if limit < 1 or limit > 100:
+            raise HTTPException(status_code=400, detail="limit must be between 1 and 100")
+        return [MemoryItemRecord(**item) for item in active_store.list_memory_items(limit=limit)]
+
+    @app.post("/api/memory/items", response_model=MemoryItemRecord, status_code=201)
+    def ingest_memory(payload: MemoryIngestRequest) -> MemoryItemRecord:
+        item = memory_engine.ingest(
+            title=payload.title,
+            summary=payload.summary,
+            content=payload.content,
+            provenance=payload.provenance,
+            source_ref=payload.source_ref,
+            layer=payload.layer,
+            scope=payload.scope,
+            confidence=payload.confidence,
+            freshness=payload.freshness,
+            tags=payload.tags,
+            state=payload.state,
+        )
+        return MemoryItemRecord(**item)
+
+    @app.post("/api/memory/consolidate", response_model=MemoryConsolidationResponse)
+    def consolidate_memory() -> MemoryConsolidationResponse:
+        return MemoryConsolidationResponse(**memory_engine.consolidate())
+
+    @app.get("/api/memory/retrieve", response_model=MemoryRetrievalResponse)
+    def retrieve_memory(
+        query: str,
+        role: str = "orchestrator",
+        scope: str | None = None,
+        limit: int = 5,
+    ) -> MemoryRetrievalResponse:
+        if limit < 1 or limit > 20:
+            raise HTTPException(status_code=400, detail="limit must be between 1 and 20")
+        result = memory_engine.retrieve(query=query, role=role, scope=scope, limit=limit)
+        return MemoryRetrievalResponse(
+            query=result.query,
+            scope=result.scope,
+            role=result.role,
+            items=[MemoryItemRecord(**item) for item in result.items],
+            trace=result.trace,
+        )
 
     @app.get("/api/events", response_model=list[EventRecord])
     def events(limit: int = 25) -> list[EventRecord]:

@@ -33,6 +33,34 @@ export interface MemoryLayer {
   score: number;
 }
 
+export type MemoryState = 'candidate' | 'validated' | 'archived';
+
+export interface MemoryItem {
+  id: string;
+  layer: string;
+  scope: 'workspace' | 'project' | 'session' | 'user';
+  state: MemoryState;
+  title: string;
+  summary: string;
+  confidence: number;
+  freshness: number;
+  provenance: string;
+  tags: string[];
+}
+
+export interface MemoryRetrievalStep {
+  stage: string;
+  detail: string;
+}
+
+export interface MemoryRetrievalResult {
+  query: string;
+  scope: string | null;
+  role: string;
+  items: MemoryItem[];
+  trace: MemoryRetrievalStep[];
+}
+
 export interface WorkspaceSummary {
   name: string;
   mode: 'Manual' | 'Supervised' | 'Autonomous';
@@ -106,5 +134,44 @@ export const seedMemoryLayers: MemoryLayer[] = [
     name: 'Semantic',
     description: 'Normalized facts and stable workspace knowledge.',
     score: 0.91
+  }
+];
+
+export const seedMemoryItems: MemoryItem[] = [
+  {
+    id: 'memory-item-001',
+    layer: 'Active Context',
+    scope: 'session',
+    state: 'validated',
+    title: 'Phase 1 completed',
+    summary: 'SQLite persistence and append-only event logging are live in the backend.',
+    confidence: 0.99,
+    freshness: 0.96,
+    provenance: 'phase-1-commit',
+    tags: ['persistence', 'events', 'backend']
+  },
+  {
+    id: 'memory-item-002',
+    layer: 'Semantic',
+    scope: 'workspace',
+    state: 'validated',
+    title: 'Phase 2 target',
+    summary: 'Build the memory engine with scoped retrieval and explanation traces.',
+    confidence: 0.94,
+    freshness: 0.9,
+    provenance: 'roadmap',
+    tags: ['memory', 'retrieval', 'trace']
+  },
+  {
+    id: 'memory-item-003',
+    layer: 'Episodic',
+    scope: 'project',
+    state: 'candidate',
+    title: 'Retrieval audit note',
+    summary: 'Inspect why a memory item was surfaced before it becomes durable.',
+    confidence: 0.78,
+    freshness: 0.84,
+    provenance: 'design-note',
+    tags: ['inspectability', 'candidate', 'retrieval']
   }
 ];
