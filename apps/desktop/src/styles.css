@@ -231,6 +231,12 @@ p {
   margin-top: 14px;
 }
 
+.orchestration-controls {
+  display: flex;
+  gap: 12px;
+  margin-top: 14px;
+}
+
 .memory-controls {
   display: grid;
   grid-template-columns: minmax(0, 2fr) 160px 160px 160px;
@@ -261,6 +267,63 @@ p {
   border: 1px solid var(--border);
   background: rgba(255, 255, 255, 0.03);
   color: var(--text);
+}
+
+.launch-summary {
+  margin-top: 12px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(141, 212, 197, 0.18);
+  background: rgba(141, 212, 197, 0.06);
+}
+
+.run-history {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.8fr) minmax(0, 1.2fr);
+  gap: 16px;
+  margin-top: 14px;
+}
+
+.run-list {
+  display: grid;
+  gap: 10px;
+}
+
+.run-row,
+.run-node {
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.02);
+  padding: 14px;
+  text-align: left;
+}
+
+.run-row strong,
+.run-node strong {
+  display: block;
+}
+
+.run-row span,
+.run-node p {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+}
+
+.run-node-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+}
+
+.run-node-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 0.82rem;
 }
 
 .event-hint {
@@ -361,6 +424,12 @@ p {
   .memory-controls,
   .retrieval-grid {
     grid-template-columns: 1fr;
+  }
+
+  .run-history,
+  .orchestration-controls {
+    grid-template-columns: 1fr;
+    flex-direction: column;
   }
 
   .hero {

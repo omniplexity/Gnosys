@@ -5,6 +5,7 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from uuid import uuid4
 from typing import Any
 
 
@@ -47,7 +48,11 @@ TASK_SEED = [
 AGENT_SEED = [
     {"id": "agent-001", "name": "Orchestrator", "role": "Control loop and task routing", "status": "Working"},
     {"id": "agent-002", "name": "Planner", "role": "Task decomposition and sequencing", "status": "Reviewing"},
-    {"id": "agent-003", "name": "Memory Steward", "role": "Memory policies and write-back", "status": "Idle"},
+    {"id": "agent-003", "name": "Research Specialist", "role": "Research and retrieval", "status": "Idle"},
+    {"id": "agent-004", "name": "Builder Specialist", "role": "Coding and implementation", "status": "Idle"},
+    {"id": "agent-005", "name": "Memory Steward", "role": "Memory policies and write-back", "status": "Idle"},
+    {"id": "agent-006", "name": "Critic / Evaluator", "role": "Review and validation", "status": "Idle"},
+    {"id": "agent-007", "name": "Operations / Scheduler", "role": "Scheduling and control", "status": "Idle"},
 ]
 
 MEMORY_SEED = [
@@ -165,6 +170,41 @@ CREATE TABLE IF NOT EXISTS memory_items (
     last_accessed_at TEXT
 );
 
+CREATE TABLE IF NOT EXISTS task_runs (
+    id TEXT PRIMARY KEY,
+    task_id TEXT NOT NULL,
+    objective TEXT NOT NULL,
+    requested_by TEXT NOT NULL,
+    mode TEXT NOT NULL,
+    status TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    step_count INTEGER NOT NULL,
+    approval_required INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    completed_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS agent_runs (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL,
+    agent_name TEXT NOT NULL,
+    agent_role TEXT NOT NULL,
+    run_kind TEXT NOT NULL,
+    status TEXT NOT NULL,
+    objective TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    parent_run_id TEXT,
+    task_run_id TEXT NOT NULL,
+    recursion_depth INTEGER NOT NULL,
+    child_count INTEGER NOT NULL,
+    budget_units INTEGER NOT NULL,
+    approval_required INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    completed_at TEXT
+);
+
 CREATE TABLE IF NOT EXISTS events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     type TEXT NOT NULL,
@@ -174,6 +214,8 @@ CREATE TABLE IF NOT EXISTS events (
 );
 
 CREATE INDEX IF NOT EXISTS idx_events_created_at ON events(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_task_runs_created_at ON task_runs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_agent_runs_created_at ON agent_runs(created_at DESC);
 """
 
 
@@ -272,6 +314,60 @@ class GnosysStore:
                 for item in MEMORY_ITEM_SEED
             ],
         )
+
+    def _task_seed_defaults(self, title: str, summary: str) -> tuple[str, str]:
+        safe_title = title.strip() or "Untitled task"
+        safe_summary = summary.strip() or safe_title
+        return safe_title, safe_summary
+
+    def create_task(
+        self,
+        *,
+        title: str,
+        summary: str,
+        status: str = "Inbox",
+        priority: str = "Medium",
+    ) -> dict[str, Any]:
+        timestamp = utc_now()
+        task_id = f"task-{uuid4().hex[:12]}"
+        title, summary = self._task_seed_defaults(title, summary)
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO tasks(id, title, summary, status, priority, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (task_id, title, summary, status, priority, timestamp),
+            )
+            connection.commit()
+        return {
+            "id": task_id,
+            "title": title,
+            "summary": summary,
+            "status": status,
+            "priority": priority,
+        }
+
+    def update_task_status(self, task_id: str, status: str) -> dict[str, Any]:
+        timestamp = utc_now()
+        with self.connect() as connection:
+            connection.execute(
+                "UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?",
+                (status, timestamp, task_id),
+            )
+            connection.commit()
+        task = self.get_task(task_id)
+        if task is None:
+            raise KeyError(task_id)
+        return task
+
+    def get_task(self, task_id: str) -> dict[str, Any] | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT id, title, summary, status, priority FROM tasks WHERE id = ?",
+                (task_id,),
+            ).fetchone()
+            return dict(row) if row is not None else None
 
     def get_workspace_state(self) -> dict[str, str]:
         with self.connect() as connection:
@@ -427,6 +523,290 @@ class GnosysStore:
             )
             connection.commit()
 
+    def create_task_run(
+        self,
+        *,
+        task_id: str,
+        objective: str,
+        requested_by: str,
+        mode: str,
+        status: str,
+        summary: str,
+        step_count: int,
+        approval_required: bool,
+    ) -> dict[str, Any]:
+        timestamp = utc_now()
+        run_id = f"run-{uuid4().hex[:12]}"
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO task_runs(
+                    id, task_id, objective, requested_by, mode, status, summary, step_count,
+                    approval_required, created_at, updated_at, completed_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    run_id,
+                    task_id,
+                    objective,
+                    requested_by,
+                    mode,
+                    status,
+                    summary,
+                    step_count,
+                    int(approval_required),
+                    timestamp,
+                    timestamp,
+                    None,
+                ),
+            )
+            connection.commit()
+        return self.get_task_run(run_id) or {}
+
+    def update_task_run(
+        self,
+        run_id: str,
+        *,
+        status: str,
+        summary: str | None = None,
+        completed: bool = False,
+        step_count: int | None = None,
+        approval_required: bool | None = None,
+    ) -> dict[str, Any]:
+        timestamp = utc_now()
+        current = self.get_task_run(run_id)
+        if current is None:
+            raise KeyError(run_id)
+        with self.connect() as connection:
+            connection.execute(
+                """
+                UPDATE task_runs
+                SET status = ?,
+                    summary = COALESCE(?, summary),
+                    step_count = COALESCE(?, step_count),
+                    approval_required = COALESCE(?, approval_required),
+                    updated_at = ?,
+                    completed_at = ?
+                WHERE id = ?
+                """,
+                (
+                    status,
+                    summary,
+                    step_count,
+                    None if approval_required is None else int(approval_required),
+                    timestamp,
+                    timestamp if completed else current["completed_at"],
+                    run_id,
+                ),
+            )
+            connection.commit()
+        updated = self.get_task_run(run_id)
+        if updated is None:
+            raise KeyError(run_id)
+        return updated
+
+    def get_task_run(self, run_id: str) -> dict[str, Any] | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT id, task_id, objective, requested_by, mode, status, summary, step_count,
+                       approval_required, created_at, updated_at, completed_at
+                FROM task_runs
+                WHERE id = ?
+                """,
+                (run_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            data = dict(row)
+            data["approval_required"] = bool(data["approval_required"])
+            return data
+
+    def list_task_runs(self, *, limit: int = 20) -> list[dict[str, Any]]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT id, task_id, objective, requested_by, mode, status, summary, step_count,
+                       approval_required, created_at, updated_at, completed_at
+                FROM task_runs
+                ORDER BY created_at DESC, id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+            results = []
+            for row in rows:
+                item = dict(row)
+                item["approval_required"] = bool(item["approval_required"])
+                results.append(item)
+            return results
+
+    def create_agent_run(
+        self,
+        *,
+        agent_id: str,
+        agent_name: str,
+        agent_role: str,
+        run_kind: str,
+        status: str,
+        objective: str,
+        summary: str,
+        task_run_id: str,
+        parent_run_id: str | None,
+        recursion_depth: int,
+        child_count: int,
+        budget_units: int,
+        approval_required: bool,
+    ) -> dict[str, Any]:
+        timestamp = utc_now()
+        run_id = f"agent-run-{uuid4().hex[:12]}"
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO agent_runs(
+                    id, agent_id, agent_name, agent_role, run_kind, status, objective, summary,
+                    parent_run_id, task_run_id, recursion_depth, child_count, budget_units,
+                    approval_required, created_at, updated_at, completed_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    run_id,
+                    agent_id,
+                    agent_name,
+                    agent_role,
+                    run_kind,
+                    status,
+                    objective,
+                    summary,
+                    parent_run_id,
+                    task_run_id,
+                    recursion_depth,
+                    child_count,
+                    budget_units,
+                    int(approval_required),
+                    timestamp,
+                    timestamp,
+                    None,
+                ),
+            )
+            connection.commit()
+        return self.get_agent_run(run_id) or {}
+
+    def update_agent_run(
+        self,
+        run_id: str,
+        *,
+        status: str,
+        summary: str | None = None,
+        completed: bool = False,
+        child_count: int | None = None,
+        budget_units: int | None = None,
+        approval_required: bool | None = None,
+    ) -> dict[str, Any]:
+        timestamp = utc_now()
+        current = self.get_agent_run(run_id)
+        if current is None:
+            raise KeyError(run_id)
+        with self.connect() as connection:
+            connection.execute(
+                """
+                UPDATE agent_runs
+                SET status = ?,
+                    summary = COALESCE(?, summary),
+                    child_count = COALESCE(?, child_count),
+                    budget_units = COALESCE(?, budget_units),
+                    approval_required = COALESCE(?, approval_required),
+                    updated_at = ?,
+                    completed_at = ?
+                WHERE id = ?
+                """,
+                (
+                    status,
+                    summary,
+                    child_count,
+                    budget_units,
+                    None if approval_required is None else int(approval_required),
+                    timestamp,
+                    timestamp if completed else current["completed_at"],
+                    run_id,
+                ),
+            )
+            connection.commit()
+        updated = self.get_agent_run(run_id)
+        if updated is None:
+            raise KeyError(run_id)
+        return updated
+
+    def get_agent_run(self, run_id: str) -> dict[str, Any] | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT id, agent_id, agent_name, agent_role, run_kind, status, objective, summary,
+                       parent_run_id, task_run_id, recursion_depth, child_count, budget_units,
+                       approval_required, created_at, updated_at, completed_at
+                FROM agent_runs
+                WHERE id = ?
+                """,
+                (run_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            data = dict(row)
+            data["approval_required"] = bool(data["approval_required"])
+            return data
+
+    def list_agent_runs(
+        self,
+        *,
+        limit: int = 50,
+        task_run_id: str | None = None,
+        parent_run_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        query = [
+            "SELECT id, agent_id, agent_name, agent_role, run_kind, status, objective, summary, parent_run_id, task_run_id, recursion_depth, child_count, budget_units, approval_required, created_at, updated_at, completed_at",
+            "FROM agent_runs",
+        ]
+        params: list[Any] = []
+        conditions: list[str] = []
+        if task_run_id:
+            conditions.append("task_run_id = ?")
+            params.append(task_run_id)
+        if parent_run_id is not None:
+            conditions.append("parent_run_id = ?")
+            params.append(parent_run_id)
+        if conditions:
+            query.append("WHERE " + " AND ".join(conditions))
+        query.append("ORDER BY created_at ASC, id ASC")
+        query.append("LIMIT ?")
+        params.append(limit)
+        sql = " ".join(query)
+        with self.connect() as connection:
+            rows = connection.execute(sql, params).fetchall()
+            results = []
+            for row in rows:
+                item = dict(row)
+                item["approval_required"] = bool(item["approval_required"])
+                results.append(item)
+            return results
+
+    def list_runtime_roots(self, limit: int = 10) -> list[dict[str, Any]]:
+        task_runs = self.list_task_runs(limit=limit)
+        for run in task_runs:
+            run["agent_runs"] = self.list_agent_runs(task_run_id=run["id"], limit=100)
+        return task_runs
+
+    def count_task_runs(self) -> int:
+        with self.connect() as connection:
+            row = connection.execute("SELECT COUNT(*) AS count FROM task_runs").fetchone()
+            return int(row["count"] if row is not None else 0)
+
+    def count_agent_runs(self) -> int:
+        with self.connect() as connection:
+            row = connection.execute("SELECT COUNT(*) AS count FROM agent_runs").fetchone()
+            return int(row["count"] if row is not None else 0)
+
     def list_events(self, limit: int = 25) -> list[dict[str, Any]]:
         with self.connect() as connection:
             rows = connection.execute(
@@ -492,6 +872,8 @@ class GnosysStore:
         agents = self.list_agents()
         memory_layers = self.list_memory_layers()
         memory_items = self.list_memory_items(limit=10)
+        task_runs = self.list_task_runs(limit=10)
+        agent_runs = self.list_agent_runs(limit=25)
         recent_events = self.list_events()
 
         return {
@@ -506,12 +888,16 @@ class GnosysStore:
             "agents": agents,
             "memory_layers": memory_layers,
             "memory_items": memory_items,
+            "task_runs": task_runs,
+            "agent_runs": agent_runs,
             "recent_events": recent_events,
             "counts": {
                 "tasks": len(tasks),
                 "agents": len(agents),
                 "memory_layers": len(memory_layers),
                 "memory_items": self.count_memory_items(),
+                "task_runs": self.count_task_runs(),
+                "agent_runs": self.count_agent_runs(),
                 "events": self.count_events(),
             },
         }

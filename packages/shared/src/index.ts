@@ -26,6 +26,41 @@ export interface Agent {
   status: AgentStatus;
 }
 
+export interface TaskRun {
+  id: string;
+  task_id: string;
+  objective: string;
+  requested_by: string;
+  mode: string;
+  status: string;
+  summary: string;
+  step_count: number;
+  approval_required: boolean;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+}
+
+export interface AgentRun {
+  id: string;
+  agent_id: string;
+  agent_name: string;
+  agent_role: string;
+  run_kind: string;
+  status: string;
+  objective: string;
+  summary: string;
+  parent_run_id: string | null;
+  task_run_id: string;
+  recursion_depth: number;
+  child_count: number;
+  budget_units: number;
+  approval_required: boolean;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+}
+
 export interface MemoryLayer {
   id: string;
   name: string;
@@ -113,7 +148,11 @@ export const seedTasks: Task[] = [
 export const seedAgents: Agent[] = [
   { id: 'agent-001', name: 'Orchestrator', role: 'Control loop and task routing', status: 'Working' },
   { id: 'agent-002', name: 'Planner', role: 'Task decomposition and sequencing', status: 'Reviewing' },
-  { id: 'agent-003', name: 'Memory Steward', role: 'Memory policies and write-back', status: 'Idle' }
+  { id: 'agent-003', name: 'Research Specialist', role: 'Research and retrieval', status: 'Idle' },
+  { id: 'agent-004', name: 'Builder Specialist', role: 'Coding and implementation', status: 'Idle' },
+  { id: 'agent-005', name: 'Memory Steward', role: 'Memory policies and write-back', status: 'Idle' },
+  { id: 'agent-006', name: 'Critic / Evaluator', role: 'Review and validation', status: 'Idle' },
+  { id: 'agent-007', name: 'Operations / Scheduler', role: 'Scheduling and control', status: 'Idle' }
 ];
 
 export const seedMemoryLayers: MemoryLayer[] = [

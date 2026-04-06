@@ -46,15 +46,16 @@ Exit criteria:
 
 ## Phase 3 - Orchestration and agents
 
-- orchestrator and specialist runtime
-- bounded worker spawning
-- task decomposition and reporting
-- execution controller and approvals
+- persistent orchestrator and specialist runtime
+- bounded worker spawning with recursion and child-count limits
+- task decomposition, reporting, and run summaries
+- approval gates for sensitive objectives
+- inspectable task-run and agent-run trees
 
 Exit criteria:
 
 - tasks can move through agent-driven execution
-- child agents are bounded and observable
+- child agents are bounded, inspectable, and logged
 
 ## Phase 4 - CRUD surfaces
 

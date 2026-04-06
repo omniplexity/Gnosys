@@ -34,11 +34,46 @@ class TaskRecord(BaseModel):
     priority: str
 
 
+class TaskRunRecord(BaseModel):
+    id: str
+    task_id: str
+    objective: str
+    requested_by: str
+    mode: str
+    status: str
+    summary: str
+    step_count: int
+    approval_required: bool
+    created_at: str
+    updated_at: str
+    completed_at: str | None = None
+
+
 class AgentRecord(BaseModel):
     id: str
     name: str
     role: str
     status: str
+
+
+class AgentRunRecord(BaseModel):
+    id: str
+    agent_id: str
+    agent_name: str
+    agent_role: str
+    run_kind: str
+    status: str
+    objective: str
+    summary: str
+    parent_run_id: str | None = None
+    task_run_id: str
+    recursion_depth: int
+    child_count: int
+    budget_units: int
+    approval_required: bool
+    created_at: str
+    updated_at: str
+    completed_at: str | None = None
 
 
 class MemoryLayerRecord(BaseModel):
@@ -122,11 +157,41 @@ class MemoryConsolidationResponse(BaseModel):
     archived: int
 
 
+class OrchestrationLaunchRequest(BaseModel):
+    objective: str = Field(min_length=1)
+    task_title: str | None = None
+    task_summary: str | None = None
+    requested_by: str = Field(default="user")
+    mode: str = Field(default="Supervised")
+    priority: str = Field(default="High")
+
+
+class OrchestrationLaunchResponse(BaseModel):
+    task: TaskRecord
+    task_run: TaskRunRecord
+    agent_runs: list[AgentRunRecord]
+    steps: list[dict[str, str]]
+    approvals_required: list[str]
+    summary: str
+
+
+class OrchestrationRunResponse(BaseModel):
+    task: TaskRecord
+    task_run: TaskRunRecord
+    agent_runs: list[AgentRunRecord]
+
+
+class OrchestrationRunListResponse(BaseModel):
+    task_runs: list[TaskRunRecord]
+
+
 class WorkspaceSnapshotResponse(BaseModel):
     workspace: WorkspaceSummary
     tasks: list[TaskRecord]
     agents: list[AgentRecord]
     memory_layers: list[MemoryLayerRecord]
     memory_items: list[MemoryItemRecord]
+    task_runs: list[TaskRunRecord]
+    agent_runs: list[AgentRunRecord]
     recent_events: list[EventRecord]
     counts: dict[str, int]

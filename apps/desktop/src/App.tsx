@@ -6,9 +6,11 @@ import {
   seedTasks,
   workspaceSummary,
   type Agent,
+  type AgentRun,
   type MemoryItem,
   type MemoryLayer,
-  type Task
+  type Task,
+  type TaskRun
 } from '@gnosys/shared';
 import { useEffect, useMemo, useState } from 'react';
 
@@ -26,6 +28,8 @@ type WorkspaceSnapshot = {
   agents: Agent[];
   memory_layers: MemoryLayer[];
   memory_items: MemoryItem[];
+  task_runs: TaskRun[];
+  agent_runs: AgentRun[];
   recent_events: Array<{
     id: number;
     type: string;
@@ -38,6 +42,8 @@ type WorkspaceSnapshot = {
     agents: number;
     memory_layers: number;
     memory_items: number;
+    task_runs: number;
+    agent_runs: number;
     events: number;
   };
 };
@@ -55,24 +61,37 @@ type MemoryRetrievalResult = {
   trace: Array<{ stage: string; detail: string }>;
 };
 
+type LaunchResponse = {
+  task: Task;
+  task_run: TaskRun;
+  agent_runs: AgentRun[];
+  steps: Array<{ intent: string; objective: string; assigned_agent: string; approval_note: string }>;
+  approvals_required: string[];
+  summary: string;
+};
+
 const fallbackSnapshot: WorkspaceSnapshot = {
   workspace: {
     name: workspaceSummary.name,
     mode: workspaceSummary.mode,
     status: workspaceSummary.status,
     active_project: workspaceSummary.activeProject,
-    phase: 'Memory engine foundation'
+    phase: 'Orchestration runtime foundation'
   },
   tasks: seedTasks,
   agents: seedAgents,
   memory_layers: seedMemoryLayers,
   memory_items: seedMemoryItems,
+  task_runs: [],
+  agent_runs: [],
   recent_events: [],
   counts: {
     tasks: seedTasks.length,
     agents: seedAgents.length,
     memory_layers: seedMemoryLayers.length,
     memory_items: seedMemoryItems.length,
+    task_runs: 0,
+    agent_runs: 0,
     events: 0
   }
 };
@@ -101,6 +120,38 @@ async function retrieveMemory(query: string, role: string, scope: string | null)
   return (await response.json()) as MemoryRetrievalResult;
 }
 
+async function launchOrchestration(objective: string): Promise<LaunchResponse> {
+  const response = await fetch('/api/orchestration/launch', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      objective,
+      task_title: objective.slice(0, 48),
+      task_summary: objective,
+      requested_by: 'desktop',
+      mode: 'Supervised',
+      priority: 'High'
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to launch orchestration: ${response.status}`);
+  }
+
+  return (await response.json()) as LaunchResponse;
+}
+
+function buildRunTree(agentRuns: AgentRun[]): AgentRun[] {
+  return agentRuns.slice().sort((left, right) => {
+    if (left.recursion_depth !== right.recursion_depth) {
+      return left.recursion_depth - right.recursion_depth;
+    }
+    return left.created_at.localeCompare(right.created_at);
+  });
+}
+
 export default function App() {
   const [activeSection, setActiveSection] = useState(navSections[0]);
   const [activeTask, setActiveTask] = useState(seedTasks[0].id);
@@ -115,6 +166,10 @@ export default function App() {
   const [retrieval, setRetrieval] = useState<MemoryRetrievalResult | null>(null);
   const [memoryError, setMemoryError] = useState<string | null>(null);
   const [memoryState, setMemoryState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [launchObjective, setLaunchObjective] = useState('Implement phase 3 orchestration runtime for Gnosys');
+  const [launchState, setLaunchState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [launchError, setLaunchError] = useState<string | null>(null);
+  const [launchResponse, setLaunchResponse] = useState<LaunchResponse | null>(null);
 
   async function refreshSnapshot() {
     const state = await loadSnapshot();
@@ -136,6 +191,21 @@ export default function App() {
     }
   }
 
+  async function runLaunch(objective = launchObjective) {
+    setLaunchState('loading');
+    setLaunchError(null);
+    try {
+      const result = await launchOrchestration(objective);
+      setLaunchResponse(result);
+      await refreshSnapshot();
+      setLaunchState('ready');
+      setActiveTab('Trace');
+    } catch (error) {
+      setLaunchError(error instanceof Error ? error.message : 'Failed to launch orchestration');
+      setLaunchState('error');
+    }
+  }
+
   useEffect(() => {
     let cancelled = false;
 
@@ -149,6 +219,14 @@ export default function App() {
         setSnapshot(state);
         setLoadingState('ready');
         setErrorMessage(null);
+        const firstRun = state.task_runs[0];
+        if (firstRun) {
+          setLaunchResponse({
+            task: state.tasks.find((task) => task.id === firstRun.task_id) ?? state.tasks[0] ?? seedTasks[0],
+            task_run: firstRun,
+            agent_runs: state.agent_runs.filter((run) => run.task_run_id === firstRun.id)
+          } as LaunchResponse);
+        }
       } catch (error) {
         if (cancelled) {
           return;
@@ -174,6 +252,8 @@ export default function App() {
 
   const selectedAgent = snapshot.agents[0] ?? fallbackSnapshot.agents[0];
   const activeMemoryLayer = snapshot.memory_layers[0] ?? fallbackSnapshot.memory_layers[0];
+  const currentRun = launchResponse?.task_run ?? snapshot.task_runs[0] ?? null;
+  const currentRunTree = currentRun ? buildRunTree(snapshot.agent_runs.filter((run) => run.task_run_id === currentRun.id)) : [];
 
   async function appendCheckpointEvent() {
     const response = await fetch('/api/events', {
@@ -227,8 +307,8 @@ export default function App() {
       <main className="main">
         <header className="hero">
           <div>
-            <div className="eyebrow">Memory engine</div>
-            <h2>Local persistence with scoped retrieval, ranked candidates, and explainable traces.</h2>
+            <div className="eyebrow">Orchestration runtime</div>
+            <h2>Memory, delegation, and bounded worker runs now sit on the same local foundation.</h2>
           </div>
           <div className="status-pill">
             {snapshot.workspace.mode} · {snapshot.workspace.status} · {loadingState}
@@ -249,8 +329,8 @@ export default function App() {
             <strong>{activeMemoryLayer.name}</strong>
           </article>
           <article>
-            <span>Events</span>
-            <strong>{snapshot.counts.events}</strong>
+            <span>Runs</span>
+            <strong>{snapshot.counts.task_runs}</strong>
           </article>
         </section>
 
@@ -284,7 +364,7 @@ export default function App() {
               <p>{activeSection}</p>
             </div>
             <div className="detail">
-              <strong>Persistence phase</strong>
+              <strong>Execution phase</strong>
               <p>{snapshot.workspace.phase}</p>
             </div>
             <div className="detail">
@@ -298,20 +378,95 @@ export default function App() {
               </p>
             </div>
             <div className="detail">
-              <strong>Retrieval status</strong>
-              <p>{memoryState}</p>
+              <strong>Run status</strong>
+              <p>{launchState}</p>
             </div>
           </aside>
+        </section>
+
+        <section className="panel orchestration-panel">
+          <div className="panel-title">Launch orchestration</div>
+          <div className="orchestration-controls">
+            <input
+              value={launchObjective}
+              onChange={(event) => setLaunchObjective(event.target.value)}
+              aria-label="Launch objective"
+            />
+            <button className="primary-action" onClick={() => void runLaunch()}>
+              Launch run
+            </button>
+          </div>
+          <p className="event-hint">This creates a task, a task run, specialist runs, and bounded workers with an inspectable tree.</p>
+          {launchError && <p className="error-banner">{launchError}</p>}
+          {launchResponse && (
+            <div className="launch-summary">
+              <strong>{launchResponse.summary}</strong>
+              <p>{launchResponse.task_run.status} · {launchResponse.agent_runs.length} runs created · {launchResponse.steps.length} steps</p>
+            </div>
+          )}
+        </section>
+
+        <section className="panel orchestration-panel">
+          <div className="panel-title">Run tree</div>
+          <div className="run-history">
+            <div className="run-list">
+              {snapshot.task_runs.map((run) => (
+                <button
+                  key={run.id}
+                  className={currentRun?.id === run.id ? 'run-row active' : 'run-row'}
+                  onClick={() =>
+                    setLaunchResponse({
+                      task: snapshot.tasks.find((task) => task.id === run.task_id) ?? selectedTask,
+                      task_run: run,
+                      agent_runs: snapshot.agent_runs.filter((agentRun) => agentRun.task_run_id === run.id),
+                      steps: [],
+                      approvals_required: [],
+                      summary: run.summary
+                    })
+                  }
+                >
+                  <strong>{run.objective}</strong>
+                  <span>{run.status} · {run.step_count} steps</span>
+                </button>
+              ))}
+              {snapshot.task_runs.length === 0 && <p>No orchestration runs yet.</p>}
+            </div>
+            <div className="run-tree">
+              <div className="panel-title">Selected run</div>
+              {currentRun ? (
+                <>
+                  <div className="detail">
+                    <strong>{currentRun.objective}</strong>
+                    <p>{currentRun.summary}</p>
+                  </div>
+                  <div className="stack compact">
+                    {currentRunTree.map((run) => (
+                      <article key={run.id} className="run-node" style={{ marginLeft: `${run.recursion_depth * 18}px` }}>
+                        <div className="run-node-top">
+                          <strong>{run.agent_name}</strong>
+                          <span>{run.run_kind} · {run.status}</span>
+                        </div>
+                        <p>{run.summary}</p>
+                        <div className="run-node-meta">
+                          <span>budget {run.budget_units}</span>
+                          <span>children {run.child_count}</span>
+                          <span>approval {run.approval_required ? 'required' : 'not required'}</span>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <p>Run details will appear here after launch.</p>
+              )}
+            </div>
+          </div>
         </section>
 
         <section className="panel event-panel">
           <div className="panel-title">Memory retrieval</div>
           <div className="memory-controls">
-            <input
-              value={memoryQuery}
-              onChange={(event) => setMemoryQuery(event.target.value)}
-              aria-label="Memory query"
-            />
+            <input value={memoryQuery} onChange={(event) => setMemoryQuery(event.target.value)} aria-label="Memory query" />
             <select value={memoryScope} onChange={(event) => setMemoryScope(event.target.value)}>
               <option value="">All scopes</option>
               <option value="workspace">Workspace</option>
@@ -369,11 +524,7 @@ export default function App() {
         <section className="panel event-panel">
           <div className="panel-title">Write to event log</div>
           <div className="event-controls">
-            <input
-              value={eventDraft}
-              onChange={(event) => setEventDraft(event.target.value)}
-              aria-label="Event type"
-            />
+            <input value={eventDraft} onChange={(event) => setEventDraft(event.target.value)} aria-label="Event type" />
             <button className="primary-action" onClick={() => void appendCheckpointEvent()}>
               Record event
             </button>
@@ -406,10 +557,10 @@ export default function App() {
               </div>
             )}
             {activeTab === 'Timeline' && (
-              <p>Memory engine retrieval now sits on top of the persisted workspace, ready for consolidation and promotion.</p>
+              <p>Task runs, specialist delegation, and worker spawning now sit on the same local event trail.</p>
             )}
             {activeTab === 'Trace' && (
-              <p>frontend query → backend ranking → SQLite read/write → trace explanation → UI refresh</p>
+              <p>request → task run → planner → specialist → bounded worker → event log → inspectable tree</p>
             )}
           </div>
         </section>

@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .models import (
     AgentRecord,
+    AgentRunRecord,
     EventCreateRequest,
     EventRecord,
     HealthResponse,
@@ -16,12 +17,18 @@ from .models import (
     MemoryItemRecord,
     MemoryLayerRecord,
     MemoryRetrievalResponse,
+    OrchestrationLaunchRequest,
+    OrchestrationLaunchResponse,
+    OrchestrationRunListResponse,
+    OrchestrationRunResponse,
     StatusResponse,
     TaskRecord,
+    TaskRunRecord,
     WorkspaceSnapshotResponse,
     WorkspaceSummary,
 )
 from .memory import MemoryEngine
+from .runtime import OrchestrationEngine
 from .store import GnosysStore
 
 
@@ -54,6 +61,7 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
     active_store = store or _build_store()
     active_store.initialize()
     memory_engine = MemoryEngine(active_store)
+    orchestration_engine = OrchestrationEngine(active_store)
 
     @app.get("/health", response_model=HealthResponse)
     def health() -> HealthResponse:
@@ -130,6 +138,42 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
             role=result.role,
             items=[MemoryItemRecord(**item) for item in result.items],
             trace=result.trace,
+        )
+
+    @app.get("/api/orchestration/runs", response_model=OrchestrationRunListResponse)
+    def orchestration_runs(limit: int = 10) -> OrchestrationRunListResponse:
+        if limit < 1 or limit > 20:
+            raise HTTPException(status_code=400, detail="limit must be between 1 and 20")
+        return OrchestrationRunListResponse(
+            task_runs=[TaskRunRecord(**run) for run in orchestration_engine.list_runs(limit=limit)]
+        )
+
+    @app.get("/api/orchestration/runs/{task_run_id}", response_model=OrchestrationRunResponse)
+    def orchestration_run(task_run_id: str) -> OrchestrationRunResponse:
+        result = orchestration_engine.get_run(task_run_id)
+        return OrchestrationRunResponse(
+            task=TaskRecord(**result["task"]),
+            task_run=TaskRunRecord(**result["task_run"]),
+            agent_runs=[AgentRunRecord(**run) for run in result["agent_runs"]],
+        )
+
+    @app.post("/api/orchestration/launch", response_model=OrchestrationLaunchResponse, status_code=201)
+    def launch_orchestration(payload: OrchestrationLaunchRequest) -> OrchestrationLaunchResponse:
+        result = orchestration_engine.launch(
+            objective=payload.objective,
+            task_title=payload.task_title,
+            task_summary=payload.task_summary,
+            requested_by=payload.requested_by,
+            mode=payload.mode,
+            priority=payload.priority,
+        )
+        return OrchestrationLaunchResponse(
+            task=TaskRecord(**result.task),
+            task_run=TaskRunRecord(**result.task_run),
+            agent_runs=[AgentRunRecord(**run) for run in result.agent_runs],
+            steps=result.steps,
+            approvals_required=result.approvals_required,
+            summary=result.summary,
         )
 
     @app.get("/api/events", response_model=list[EventRecord])
