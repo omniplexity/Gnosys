@@ -1,54 +1,21 @@
-# Release and Versioning
+# Release and Versioning for the Archive
 
-Gnosys uses semantic versioning across the repository.
+The live Gnosys plugin/backend implementation has been removed from `main`. This branch now acts as a documentation archive.
 
-## Versioning rules
+## Current policy
 
-- Keep `package.json` and `python/pyproject.toml` on the same release version.
-- Use `major.minor.patch`.
-- Increment `patch` for fixes and documentation-only changes.
-- Increment `minor` for new capabilities or notable workflow changes.
-- Increment `major` for architectural or compatibility breaks.
+- There is no active software release process for this branch.
+- Repository updates should be treated as archive revisions.
+- If code is ever reintroduced, restore semantic versioning for the runtime and backend.
 
-## Release stages
+## Archive revision checklist
 
-### Patch release
+1. Update the docs that changed.
+2. Update `CHANGELOG.md`.
+3. Keep `README.md` and `docs/INDEX.md` aligned.
+4. Confirm the repository still contains only archive material.
+5. Commit and push the revision.
 
-- documentation updates
-- small bug fixes
-- test or build reliability improvements
+## Future note
 
-### Minor release
-
-- new tools or backend endpoints
-- new workflows or runtime capabilities
-- meaningful docs updates that describe new behavior
-
-### Major release
-
-- breaking config changes
-- backend or plugin contract changes
-- architectural shifts
-
-## Release checklist
-
-1. Confirm the branch is up to date with `origin/main`.
-2. Run `npm run check`.
-3. Run `pytest python/tests`.
-4. Update `CHANGELOG.md`.
-5. Update docs that describe behavior or version numbers.
-6. Commit the release change.
-7. Create a tag that matches the release version.
-8. Push the commit and tag.
-
-## Changelog policy
-
-- Record user-visible changes in `CHANGELOG.md`.
-- Keep the `Unreleased` section current during active work.
-- Include the date when cutting a release entry.
-
-## Current baseline
-
-- Repository package version: `1.0.0`
-- Python backend version: `1.0.0`
-- Current main branch should always reflect the latest validated state.
+- If the repository becomes runnable again, replace this archive policy with a standard release policy and version the runtime/backends together.

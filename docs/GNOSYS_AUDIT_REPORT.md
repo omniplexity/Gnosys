@@ -1,63 +1,37 @@
-# Gnosys Codebase Audit Report
+# Gnosys Archive Audit Report
 
 Generated: 2026-04-06
 
 ## Overall assessment
 
-The repository is structurally sound and the core plugin/backend implementation is in good shape. The codebase now has a cleaner repository surface, clearer release guidance, a contributor guide, a changelog, and a milestone roadmap.
+The repository is now a documentation archive. The deprecated implementation files have been removed from `main`, and the remaining material is focused on history, scope, and repository maintenance.
 
 ## Verified checks
 
 | Check | Result |
 |---|---|
-| `npm run check` | PASS |
-| `pytest python/tests -q` | PASS, 18 tests |
-
-## Architecture review
-
-### TypeScript plugin layer
-
-- `index.ts` is the OpenClaw plugin entrypoint.
-- `src/config.ts` normalizes and validates plugin configuration.
-- `src/service.ts` coordinates the backend client and process manager.
-- `src/bridge/` isolates HTTP client and child-process startup behavior.
-- `src/context-engine/` handles prompt assembly and message shaping.
-- `src/memory/` registers the prompt section, flush plan, and runtime hooks.
-- `src/tools/` provides the plugin tool surface for memory, search, skills, scheduler, backup, and migration.
-
-### Python backend
-
-- `python/src/gnosys_backend/app.py` exposes the backend application and CLI entrypoint.
-- `python/src/gnosys_backend/api/routes.py` defines the HTTP surface.
-- `python/src/gnosys_backend/memory_store.py` provides persistent memory operations.
-- `python/src/gnosys_backend/context_retrieval.py` assembles context from memory layers.
-- `python/src/gnosys_backend/learning.py`, `skills.py`, and `scheduler.py` cover the higher-level workflow systems.
-- `python/src/gnosys_backend/monitoring.py`, `backup.py`, and `error_handling.py` round out operational support.
-
-## Documentation alignment
-
-The repository documentation is now aligned around the actual codebase:
-
-- root `README.md` describes the OpenClaw plugin/backend repository
-- `CONTRIBUTING.md` covers contribution workflow
-- `RELEASE.md` covers versioning and release policy
-- `CHANGELOG.md` records notable changes
-- `docs/ROADMAP.md` is a concise milestone roadmap
-- `docs/PROJECT.md`, `docs/README.md`, and `docs/INDEX.md` reflect the current repository structure
+| `git ls-files` | archive-only file set retained |
 
 ## Findings
 
-### No blocking issues found
+### No runtime implementation remains
 
-The current state does not show a blocking build or test problem.
+- The OpenClaw plugin entrypoint has been removed.
+- The Python backend has been removed.
+- The package and compiler manifests have been removed.
+- The remaining files are documentation only.
 
-### Follow-up recommendations
+### Documentation alignment
 
-- Add CI workflows for `npm run check` and `pytest python/tests`.
-- Add lint/format tooling so style checks are automated.
-- Add issue and pull request templates for repeatable contribution flow.
-- Consider integration tests for the plugin/backend bridge startup path.
+- Root README reflects the archive state.
+- Archive guidance files describe contribution and revision policy.
+- The docs index lists only retained documentation.
+
+## Follow-up recommendations
+
+- Keep future changes limited to archival context unless the repository is intentionally restored as an active codebase.
+- Record any later archive edits in `CHANGELOG.md`.
 
 ## Conclusion
 
-The repository is cleanly organized, the core implementation is functioning, and the documentation now matches the repository’s actual shape more closely. The remaining work is mostly process hardening rather than structural repair.
+This branch is now cleanly scoped as a documentation archive rather than an active software repository.

@@ -2,40 +2,22 @@
 
 ## Summary
 
-Gnosys is a local-first OpenClaw plugin and backend repository for memory, context retrieval, learning, skills, scheduling, and observability.
+Gnosys is currently maintained as a documentation archive. The previous OpenClaw plugin/backend implementation has been removed from `main`.
 
-## Current version
-
-- `package.json`: `1.0.0`
-- `python/pyproject.toml`: `1.0.0`
-
-## Current status
-
-- TypeScript wrapper implemented
-- Python backend implemented
-- CLI implemented
-- Memory storage and retrieval implemented
-- Context assembly implemented
-- Learning, skills, scheduler, monitoring, backup, and migration implemented
-- Documentation aligned to the current repository structure
-
-## Docs
+## Current contents
 
 - [README.md](../README.md)
-- [docs/INDEX.md](./INDEX.md)
-- [docs/README.md](./README.md)
-- [docs/ROADMAP.md](./ROADMAP.md)
 - [CHANGELOG.md](../CHANGELOG.md)
 - [CONTRIBUTING.md](../CONTRIBUTING.md)
 - [RELEASE.md](../RELEASE.md)
+- [docs/](./)
 
-## Architecture
+## Current status
 
-- The TypeScript layer acts as the OpenClaw plugin wrapper and bridge.
-- The Python layer provides the backend service and CLI.
-- The repo uses local HTTP between the wrapper and backend rather than embedding all runtime logic in the plugin entrypoint.
+- No runtime source files remain in the branch
+- No package manifest or backend code remains in the branch
+- The retained documents explain the archived product, architecture, and repository history
 
 ## Notes
 
-- This repository is not a desktop UI project.
-- The current focus is on backend capability, reliability, and clean documentation.
+- This file exists to describe the archive state, not an active software delivery.

@@ -2,50 +2,26 @@
 
 ## Purpose
 
-This repository houses the Gnosys OpenClaw integration and backend. It combines a TypeScript plugin wrapper with a Python service responsible for memory, context retrieval, learning, skills, scheduling, monitoring, and related runtime operations.
+This repository no longer contains the OpenClaw plugin/backend implementation. It now preserves the documentation archive that describes that removed system.
 
-## Top-level layout
+## What remains
 
-- `index.ts` - OpenClaw plugin entrypoint
-- `src/` - TypeScript implementation for the plugin wrapper, bridge, memory layer, and tools
-- `python/` - Python backend implementation and tests
-- `docs/` - documentation for product scope, architecture, implementation, and operational guidance
-- `openclaw.plugin.json` - plugin metadata
-- `package.json` - TypeScript tooling and checks
-- `tsconfig.json` - TypeScript compiler settings
+- `README.md` - archive overview
+- `CHANGELOG.md` - archive revisions
+- `CONTRIBUTING.md` - archive contribution guidance
+- `RELEASE.md` - archive revision policy
+- `docs/` - product, architecture, audit, and roadmap documents
 
-## Key runtime areas
+## Historical context
 
-### TypeScript layer
+The removed implementation previously contained:
 
-- `src/config.ts` - config schema and normalization
-- `src/service.ts` - service orchestration and backend client wrapper
-- `src/bridge/` - HTTP bridge and child process management
-- `src/memory/` - memory prompt, flush planning, and runtime helpers
-- `src/tools/` - plugin tools for status, storage, search, learning, scheduler, backup, and migration
+- a TypeScript OpenClaw plugin wrapper
+- a Python FastAPI backend
+- memory, context, learning, skills, scheduler, and monitoring subsystems
 
-### Python layer
+Those files have been intentionally removed from `main`.
 
-- `python/src/gnosys_backend/app.py` - backend application entrypoint
-- `python/src/gnosys_backend/api/` - HTTP routes
-- `python/src/gnosys_backend/memory_store.py` - memory persistence
-- `python/src/gnosys_backend/vector_store.py` - embeddings and vector retrieval
-- `python/src/gnosys_backend/context_retrieval.py` - context assembly
-- `python/src/gnosys_backend/learning.py` - learning and pattern extraction
-- `python/src/gnosys_backend/skills.py` - skill management
-- `python/src/gnosys_backend/scheduler.py` - scheduling
-- `python/src/gnosys_backend/monitoring.py` - observability
+## Notes
 
-## Documentation intent
-
-The new documentation files in `docs/` are meant to separate the product vision from the implementation details:
-
-- `docs/PRD.md` captures the target product behavior and scope.
-- `docs/ARCHITECTURE.md` describes the intended system architecture.
-- `docs/REPOSITORY-OVERVIEW.md` explains how the repository is organized.
-
-## Clean repository rules
-
-- Commit source, docs, and lockfiles.
-- Do not commit `node_modules/`, `dist/`, logs, or build artifacts.
-- Keep product and architecture narrative in `docs/`, not in ad hoc root files.
+- This file is a historical map, not a live codebase guide.
