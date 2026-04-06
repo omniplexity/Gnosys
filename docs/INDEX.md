@@ -2,16 +2,19 @@
 
 ## Overview
 
-Gnosys is a unified intelligence framework for OpenClaw that combines multi-agent pipeline orchestration, advanced multi-tier memory, self-learning, skills, scheduling, and full observability.
+Gnosys is a local-first OpenClaw plugin and backend repository for memory, context retrieval, learning, skills, scheduling, and observability.
 
-**Version**: v1.0
+**Version**: `1.0.0`
 
 ---
 
 ## Getting Started
 
-- [README.md](../README.md) - Quick start guide
+- [README.md](../README.md) - Repository overview and setup
 - [REPOSITORY-OVERVIEW.md](./REPOSITORY-OVERVIEW.md) - Codebase map and repository structure
+- [CONTRIBUTING.md](../CONTRIBUTING.md) - Contributor workflow
+- [RELEASE.md](../RELEASE.md) - Versioning and release policy
+- [CHANGELOG.md](../CHANGELOG.md) - Release history
 - [PROJECT.md](./PROJECT.md) - Project overview and status
 
 ## Architecture
@@ -46,6 +49,8 @@ Gnosys is a unified intelligence framework for OpenClaw that combines multi-agen
 - [IMPLEMENTATION-PLAN.md](./IMPLEMENTATION-PLAN.md) - Delivery plan
 - [SPEC.md](./SPEC.md) - Full product specification
 - [PRD.md](./PRD.md) - Product requirements document
+- [ROADMAP.md](./ROADMAP.md) - Milestone roadmap
+- [GNOSYS_AUDIT_REPORT.md](./GNOSYS_AUDIT_REPORT.md) - Codebase audit report
 
 ---
 
@@ -66,9 +71,5 @@ Gnosys is a unified intelligence framework for OpenClaw that combines multi-agen
 
 | Version | Date | Changes |
 |---------|------|---------|
-| 0.1.0 | 2024-01 | Initial scaffold |
-| 0.7.0 | 2026-04-03 | Pipeline, Learning, Context Engine |
-| 0.8.0 | 2026-04-03 | Skills, Scheduler, Monitoring |
-| 0.9.0 | 2026-04-03 | Security, Backup, Error Handling, Interop |
-| 1.0.0 | 2026-04-03 | Performance Caching, Batch Processing, Tool Registry, Keychain, Incremental Backup |
-| 1.0.2 | 2026-04-04 | CLI Foundation - status, help, store, get, search commands |
+| 1.0.0 | 2026-04-03 | Plugin/backend baseline with memory, context, learning, skills, scheduler, monitoring, backup, and CLI support |
+| 1.0.1 | 2026-04-06 | Repository documentation cleanup, contributor guide, release guide, changelog, and milestone roadmap |

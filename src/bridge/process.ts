@@ -8,6 +8,10 @@ import { GnosysBackendClient } from "./client.js";
 
 type ProcessState = "idle" | "starting" | "running" | "failed" | "stopped";
 
+function hasErrorCode(error: unknown): error is Error & { code: string } {
+  return typeof error === "object" && error !== null && "code" in error && typeof (error as { code?: unknown }).code === "string";
+}
+
 export class GnosysBackendProcessManager {
   private child: ChildProcessWithoutNullStreams | null = null;
   private startPromise: Promise<void> | null = null;
@@ -134,7 +138,7 @@ export class GnosysBackendProcessManager {
       this.logger.error(`Failed to spawn Gnosys backend: ${error.message}`);
       
       // Provide specific guidance for common Windows issues
-      if (error.code === "ENOENT") {
+      if (hasErrorCode(error) && error.code === "ENOENT") {
         const cmd = pythonCmd;
         this.logger.error(`The command '${cmd}' was not found.`);
         this.logger.error(`On Windows, try using 'py' instead of 'python':`);
