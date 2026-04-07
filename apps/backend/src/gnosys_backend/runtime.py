@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import uuid4
 
+from .policy import PolicyEngine
 from .store import GnosysStore, utc_now
 
 
@@ -34,19 +35,6 @@ SPECIALIST_BY_KEYWORD = [
     ({"schedule", "cron", "automation", "recurring"}, "Operations / Scheduler"),
 ]
 
-SENSITIVE_VERBS = {
-    "delete",
-    "remove",
-    "destroy",
-    "push",
-    "publish",
-    "commit",
-    "deploy",
-    "send",
-    "write",
-}
-
-
 @dataclass(slots=True)
 class OrchestrationResult:
     task: dict[str, Any]
@@ -71,10 +59,20 @@ class OrchestrationEngine:
         mode: str = "Supervised",
         priority: str = "High",
         task_id: str | None = None,
+        bypass_policy: bool = False,
     ) -> OrchestrationResult:
         objective = objective.strip()
         task = self._ensure_task(task_id=task_id, objective=objective, task_title=task_title, task_summary=task_summary, priority=priority)
-        approval_required = self._requires_approval(objective)
+        policy = PolicyEngine(self.store)
+        if bypass_policy:
+            approval_required = False
+        else:
+            policy_decision = policy.evaluate(
+                action="orchestration.launch",
+                payload={"objective": objective, "requested_mode": mode},
+                mutating=True,
+            )
+            approval_required = policy_decision.requires_approval
         steps = self._build_steps(objective)
         summary = self._summarize_run(objective, steps, approval_required)
 
@@ -334,10 +332,6 @@ class OrchestrationEngine:
     def _summarize_run(self, objective: str, steps: list[dict[str, str]], approval_required: bool) -> str:
         status = "approval required" if approval_required else "ready for execution"
         return f"{len(steps)} step plan for: {objective[:120]} ({status})."
-
-    def _requires_approval(self, objective: str) -> bool:
-        lower = objective.lower()
-        return any(verb in lower for verb in SENSITIVE_VERBS)
 
     def _derive_task_title(self, objective: str) -> str:
         words = [word for word in objective.split() if word]

@@ -21,6 +21,10 @@ class StatusResponse(BaseModel):
 class WorkspaceSummary(BaseModel):
     name: str
     mode: str
+    autonomy_mode: str
+    kill_switch: bool
+    approval_bias: str
+    mode_label: str
     status: str
     active_project: str
     phase: str
@@ -213,6 +217,49 @@ class ScheduleRecord(BaseModel):
     updated_at: str
 
 
+class PolicyRecord(BaseModel):
+    autonomy_mode: str
+    kill_switch: bool
+    approval_bias: str
+    mode_label: str
+
+
+class PolicyUpdateRequest(BaseModel):
+    autonomy_mode: str | None = None
+    kill_switch: bool | None = None
+    approval_bias: str | None = None
+
+
+class PolicyDecisionRecord(BaseModel):
+    allowed: bool
+    requires_approval: bool
+    sensitivity: str
+    reason: str
+    mode: str
+    action: str
+
+
+class ApprovalRequestRecord(BaseModel):
+    id: str
+    action: str
+    subject_type: str
+    subject_ref: str
+    sensitivity: str
+    status: str
+    reason: str
+    payload: dict[str, Any]
+    requested_by: str
+    created_at: str
+    updated_at: str
+    resolved_at: str | None = None
+    resolved_by: str | None = None
+
+
+class ApprovalResolveRequest(BaseModel):
+    status: str = Field(default="approved")
+    resolved_by: str = Field(default="user")
+
+
 class ScheduleCreateRequest(BaseModel):
     name: str = Field(min_length=1)
     target_type: str = Field(min_length=1)
@@ -348,5 +395,6 @@ class WorkspaceSnapshotResponse(BaseModel):
     memory_items: list[MemoryItemRecord]
     task_runs: list[TaskRunRecord]
     agent_runs: list[AgentRunRecord]
+    approval_requests: list[ApprovalRequestRecord]
     recent_events: list[EventRecord]
     counts: dict[str, int]

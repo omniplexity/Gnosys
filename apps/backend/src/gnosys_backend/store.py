@@ -16,6 +16,10 @@ def utc_now() -> str:
 WORKSPACE_SEED = {
     "name": "Gnosys",
     "mode": "Supervised",
+    "autonomy_mode": "Supervised",
+    "kill_switch": "false",
+    "approval_bias": "supervised",
+    "mode_label": "Global autonomy and approval policy",
     "status": "Bootstrapping",
     "active_project": "Core Console",
     "phase": "Persistence and event log foundation",
@@ -301,9 +305,26 @@ CREATE TABLE IF NOT EXISTS events (
     created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS approval_requests (
+    id TEXT PRIMARY KEY,
+    action TEXT NOT NULL,
+    subject_type TEXT NOT NULL,
+    subject_ref TEXT NOT NULL,
+    sensitivity TEXT NOT NULL,
+    status TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    requested_by TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    resolved_at TEXT,
+    resolved_by TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_events_created_at ON events(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_task_runs_created_at ON task_runs(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_agent_runs_created_at ON agent_runs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_approval_requests_created_at ON approval_requests(created_at DESC);
 """
 
 
@@ -547,7 +568,21 @@ class GnosysStore:
     def get_workspace_state(self) -> dict[str, str]:
         with self.connect() as connection:
             rows = connection.execute("SELECT key, value FROM workspace_state").fetchall()
-            return {row["key"]: row["value"] for row in rows}
+            state = {row["key"]: row["value"] for row in rows}
+            for key, value in WORKSPACE_SEED.items():
+                state.setdefault(key, value)
+            return state
+
+    def update_workspace_state(self, updates: dict[str, str]) -> dict[str, str]:
+        if not updates:
+            return self.get_workspace_state()
+        with self.connect() as connection:
+            connection.executemany(
+                "INSERT OR REPLACE INTO workspace_state(key, value) VALUES (?, ?)",
+                list(updates.items()),
+            )
+            connection.commit()
+        return self.get_workspace_state()
 
     def list_tasks(self) -> list[dict[str, Any]]:
         with self.connect() as connection:
@@ -1291,6 +1326,121 @@ class GnosysStore:
             row = connection.execute("SELECT COUNT(*) AS count FROM events").fetchone()
             return int(row["count"] if row is not None else 0)
 
+    def create_approval_request(
+        self,
+        *,
+        action: str,
+        subject_type: str,
+        subject_ref: str,
+        sensitivity: str,
+        reason: str,
+        payload: dict[str, Any],
+        requested_by: str,
+        status: str = "pending",
+    ) -> dict[str, Any]:
+        approval_id = f"approval-{uuid4().hex[:12]}"
+        timestamp = utc_now()
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO approval_requests(
+                    id, action, subject_type, subject_ref, sensitivity, status, reason,
+                    payload, requested_by, created_at, updated_at, resolved_at, resolved_by
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)
+                """,
+                (
+                    approval_id,
+                    action,
+                    subject_type,
+                    subject_ref,
+                    sensitivity,
+                    status,
+                    reason,
+                    _encode(payload),
+                    requested_by,
+                    timestamp,
+                    timestamp,
+                ),
+            )
+            connection.commit()
+        return self.get_approval_request(approval_id) or {}
+
+    def list_approval_requests(self, limit: int = 25) -> list[dict[str, Any]]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT id, action, subject_type, subject_ref, sensitivity, status, reason,
+                       payload, requested_by, created_at, updated_at, resolved_at, resolved_by
+                FROM approval_requests
+                ORDER BY created_at DESC, id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+            return [self._approval_row(row) for row in rows]
+
+    def get_approval_request(self, approval_id: str) -> dict[str, Any] | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT id, action, subject_type, subject_ref, sensitivity, status, reason,
+                       payload, requested_by, created_at, updated_at, resolved_at, resolved_by
+                FROM approval_requests
+                WHERE id = ?
+                """,
+                (approval_id,),
+            ).fetchone()
+            return self._approval_row(row) if row is not None else None
+
+    def update_approval_request(
+        self,
+        approval_id: str,
+        *,
+        status: str,
+        resolved_by: str | None = None,
+    ) -> dict[str, Any]:
+        timestamp = utc_now()
+        resolved_at = timestamp if status in {"approved", "rejected"} else None
+        with self.connect() as connection:
+            connection.execute(
+                """
+                UPDATE approval_requests
+                SET status = ?, updated_at = ?, resolved_at = COALESCE(?, resolved_at), resolved_by = COALESCE(?, resolved_by)
+                WHERE id = ?
+                """,
+                (status, timestamp, resolved_at, resolved_by, approval_id),
+            )
+            connection.commit()
+        request = self.get_approval_request(approval_id)
+        if request is None:
+            raise KeyError(approval_id)
+        return request
+
+    def count_approval_requests(self) -> int:
+        with self.connect() as connection:
+            row = connection.execute("SELECT COUNT(*) AS count FROM approval_requests").fetchone()
+            return int(row["count"] if row is not None else 0)
+
+    def _approval_row(self, row: sqlite3.Row | None) -> dict[str, Any] | None:
+        if row is None:
+            return None
+        return {
+            "id": row["id"],
+            "action": row["action"],
+            "subject_type": row["subject_type"],
+            "subject_ref": row["subject_ref"],
+            "sensitivity": row["sensitivity"],
+            "status": row["status"],
+            "reason": row["reason"],
+            "payload": _decode(row["payload"]),
+            "requested_by": row["requested_by"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+            "resolved_at": row["resolved_at"],
+            "resolved_by": row["resolved_by"],
+        }
+
     def record_event(
         self,
         connection: sqlite3.Connection | None = None,
@@ -1335,11 +1485,16 @@ class GnosysStore:
         task_runs = self.list_task_runs(limit=10)
         agent_runs = self.list_agent_runs(limit=25)
         recent_events = self.list_events()
+        approvals = self.list_approval_requests(limit=10)
 
         return {
             "workspace": {
                 "name": workspace.get("name", "Gnosys"),
                 "mode": workspace.get("mode", "Supervised"),
+                "autonomy_mode": workspace.get("autonomy_mode", "Supervised"),
+                "kill_switch": workspace.get("kill_switch", "false").lower() == "true",
+                "approval_bias": workspace.get("approval_bias", "supervised"),
+                "mode_label": workspace.get("mode_label", "Global autonomy and approval policy"),
                 "status": workspace.get("status", "Bootstrapping"),
                 "active_project": workspace.get("active_project", "Core Console"),
                 "phase": workspace.get("phase", "Persistence and event log foundation"),
@@ -1353,6 +1508,7 @@ class GnosysStore:
             "memory_items": memory_items,
             "task_runs": task_runs,
             "agent_runs": agent_runs,
+            "approval_requests": approvals,
             "recent_events": recent_events,
             "counts": {
                 "tasks": len(tasks),
@@ -1364,6 +1520,7 @@ class GnosysStore:
                 "memory_items": self.count_memory_items(),
                 "task_runs": self.count_task_runs(),
                 "agent_runs": self.count_agent_runs(),
+                "approval_requests": self.count_approval_requests(),
                 "events": self.count_events(),
             },
         }

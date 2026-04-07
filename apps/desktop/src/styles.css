@@ -39,10 +39,8 @@ button {
   cursor: pointer;
 }
 
-input {
-  font: inherit;
-}
-
+input,
+select,
 textarea {
   font: inherit;
 }
@@ -265,11 +263,27 @@ p {
   color: var(--text);
 }
 
+.orchestration-controls input,
+.orchestration-controls select {
+  flex: 1;
+  min-width: 0;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+}
+
 .primary-action {
   padding: 14px 18px;
   border-radius: 16px;
   background: linear-gradient(135deg, rgba(141, 212, 197, 0.18), rgba(216, 179, 106, 0.18));
   border: 1px solid rgba(141, 212, 197, 0.3);
+}
+
+.primary-action.danger {
+  background: linear-gradient(135deg, rgba(179, 66, 66, 0.22), rgba(216, 179, 106, 0.12));
+  border-color: rgba(179, 66, 66, 0.42);
 }
 
 .memory-controls select {

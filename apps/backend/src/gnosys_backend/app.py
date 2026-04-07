@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import asdict
 import os
 from pathlib import Path
 
@@ -11,6 +12,8 @@ from .models import (
     AgentCreateRequest,
     AgentUpdateRequest,
     AgentRunRecord,
+    ApprovalRequestRecord,
+    ApprovalResolveRequest,
     EventCreateRequest,
     EventRecord,
     HealthResponse,
@@ -23,6 +26,9 @@ from .models import (
     OrchestrationLaunchResponse,
     OrchestrationRunListResponse,
     OrchestrationRunResponse,
+    PolicyDecisionRecord,
+    PolicyRecord,
+    PolicyUpdateRequest,
     ProjectCreateRequest,
     ProjectRecord,
     ProjectUpdateRequest,
@@ -41,6 +47,7 @@ from .models import (
     WorkspaceSummary,
 )
 from .memory import MemoryEngine
+from .policy import PolicyEngine
 from .runtime import OrchestrationEngine
 from .store import GnosysStore
 
@@ -75,6 +82,306 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
     active_store.initialize()
     memory_engine = MemoryEngine(active_store)
     orchestration_engine = OrchestrationEngine(active_store)
+    policy_engine = PolicyEngine(active_store)
+
+    def _gate_mutation(
+        *,
+        action: str,
+        subject_type: str,
+        subject_ref: str,
+        payload: dict[str, object],
+        requested_by: str = "ui",
+    ) -> None:
+        decision = policy_engine.evaluate(action=action, payload=payload, mutating=True)
+        if decision.allowed:
+            return
+        approval = active_store.create_approval_request(
+            action=action,
+            subject_type=subject_type,
+            subject_ref=subject_ref,
+            sensitivity=decision.sensitivity,
+            reason=decision.reason,
+            payload={
+                "action": action,
+                "subject_type": subject_type,
+                "subject_ref": subject_ref,
+                "requested_by": requested_by,
+                "payload": payload,
+                "policy": policy_engine.snapshot(),
+            },
+            requested_by=requested_by,
+        )
+        active_store.record_event(
+            event_type="approval.requested",
+            source="policy",
+            payload={
+                "approval_id": approval["id"],
+                "action": action,
+                "subject_type": subject_type,
+                "subject_ref": subject_ref,
+                "sensitivity": decision.sensitivity,
+                "mode": decision.mode,
+                "reason": decision.reason,
+            },
+        )
+        raise HTTPException(
+            status_code=423,
+            detail={
+                "message": "Approval required",
+                "decision": PolicyDecisionRecord(**asdict(decision)).model_dump(),
+                "approval_request": ApprovalRequestRecord(**approval).model_dump(),
+                "policy": policy_engine.snapshot(),
+            },
+        )
+
+    def _approved_request_payload(approval: dict[str, object]) -> dict[str, object]:
+        payload = approval.get("payload", {})
+        if isinstance(payload, dict):
+            nested = payload.get("payload", {})
+            if isinstance(nested, dict):
+                return nested
+        return {}
+
+    def _execute_approved_request(approval: dict[str, object]) -> dict[str, object]:
+        action = str(approval.get("action", ""))
+        subject_ref = str(approval.get("subject_ref", ""))
+        requested_by = str(approval.get("requested_by", "ui"))
+        payload = _approved_request_payload(approval)
+
+        if action == "task.create":
+            task = active_store.create_task(
+                title=str(payload.get("title", "Untitled task")),
+                summary=str(payload.get("summary", "")),
+                status=str(payload.get("status", "Inbox")),
+                priority=str(payload.get("priority", "Medium")),
+            )
+            active_store.record_event(
+                event_type="task.created",
+                source="approval",
+                payload={"task_id": task["id"], "title": task["title"], "requested_by": requested_by},
+            )
+            return {"task": task}
+
+        if action == "task.update":
+            task = active_store.update_task(
+                subject_ref,
+                title=str(payload.get("title", "Untitled task")),
+                summary=str(payload.get("summary", "")),
+                status=str(payload.get("status", "Inbox")),
+                priority=str(payload.get("priority", "Medium")),
+            )
+            active_store.record_event(
+                event_type="task.updated",
+                source="approval",
+                payload={"task_id": subject_ref, "status": task["status"], "requested_by": requested_by},
+            )
+            return {"task": task}
+
+        if action == "task.delete":
+            active_store.delete_task(subject_ref)
+            active_store.record_event(
+                event_type="task.deleted",
+                source="approval",
+                payload={"task_id": subject_ref, "requested_by": requested_by},
+            )
+            return {"task_id": subject_ref}
+
+        if action == "agent.create":
+            agent = active_store.create_agent(
+                name=str(payload.get("name", "Untitled agent")),
+                role=str(payload.get("role", "Unassigned")),
+                status=str(payload.get("status", "Idle")),
+            )
+            active_store.record_event(
+                event_type="agent.created",
+                source="approval",
+                payload={"agent_id": agent["id"], "name": agent["name"], "requested_by": requested_by},
+            )
+            return {"agent": agent}
+
+        if action == "agent.update":
+            agent = active_store.update_agent(
+                subject_ref,
+                name=str(payload.get("name", "Untitled agent")),
+                role=str(payload.get("role", "Unassigned")),
+                status=str(payload.get("status", "Idle")),
+            )
+            active_store.record_event(
+                event_type="agent.updated",
+                source="approval",
+                payload={"agent_id": subject_ref, "status": agent["status"], "requested_by": requested_by},
+            )
+            return {"agent": agent}
+
+        if action == "agent.delete":
+            active_store.delete_agent(subject_ref)
+            active_store.record_event(
+                event_type="agent.deleted",
+                source="approval",
+                payload={"agent_id": subject_ref, "requested_by": requested_by},
+            )
+            return {"agent_id": subject_ref}
+
+        if action == "project.create":
+            project = active_store.create_project(
+                name=str(payload.get("name", "Untitled project")),
+                summary=str(payload.get("summary", "")),
+                status=str(payload.get("status", "Planned")),
+                owner=str(payload.get("owner", "Gnosys")),
+            )
+            active_store.record_event(
+                event_type="project.created",
+                source="approval",
+                payload={"project_id": project["id"], "name": project["name"], "requested_by": requested_by},
+            )
+            return {"project": project}
+
+        if action == "project.update":
+            project = active_store.update_project(
+                subject_ref,
+                name=str(payload.get("name", "Untitled project")),
+                summary=str(payload.get("summary", "")),
+                status=str(payload.get("status", "Planned")),
+                owner=str(payload.get("owner", "Gnosys")),
+            )
+            active_store.record_event(
+                event_type="project.updated",
+                source="approval",
+                payload={"project_id": subject_ref, "status": project["status"], "requested_by": requested_by},
+            )
+            return {"project": project}
+
+        if action == "project.delete":
+            active_store.delete_project(subject_ref)
+            active_store.record_event(
+                event_type="project.deleted",
+                source="approval",
+                payload={"project_id": subject_ref, "requested_by": requested_by},
+            )
+            return {"project_id": subject_ref}
+
+        if action == "skill.create":
+            skill = active_store.create_skill(
+                name=str(payload.get("name", "Untitled skill")),
+                description=str(payload.get("description", "")),
+                scope=str(payload.get("scope", "workspace")),
+                version=str(payload.get("version", "0.1.0")),
+                source_type=str(payload.get("source_type", "authored")),
+                status=str(payload.get("status", "draft")),
+            )
+            active_store.record_event(
+                event_type="skill.created",
+                source="approval",
+                payload={"skill_id": skill["id"], "name": skill["name"], "requested_by": requested_by},
+            )
+            return {"skill": skill}
+
+        if action == "skill.update":
+            skill = active_store.update_skill(
+                subject_ref,
+                name=str(payload.get("name", "Untitled skill")),
+                description=str(payload.get("description", "")),
+                scope=str(payload.get("scope", "workspace")),
+                version=str(payload.get("version", "0.1.0")),
+                source_type=str(payload.get("source_type", "authored")),
+                status=str(payload.get("status", "draft")),
+            )
+            active_store.record_event(
+                event_type="skill.updated",
+                source="approval",
+                payload={"skill_id": subject_ref, "status": skill["status"], "requested_by": requested_by},
+            )
+            return {"skill": skill}
+
+        if action == "skill.delete":
+            active_store.delete_skill(subject_ref)
+            active_store.record_event(
+                event_type="skill.deleted",
+                source="approval",
+                payload={"skill_id": subject_ref, "requested_by": requested_by},
+            )
+            return {"skill_id": subject_ref}
+
+        if action == "schedule.create":
+            schedule = active_store.create_schedule(
+                name=str(payload.get("name", "Untitled schedule")),
+                target_type=str(payload.get("target_type", "skill")),
+                target_ref=str(payload.get("target_ref", "")),
+                schedule_expression=str(payload.get("schedule_expression", "")),
+                timezone=str(payload.get("timezone", "America/New_York")),
+                enabled=bool(payload.get("enabled", True)),
+                last_run_at=payload.get("last_run_at"),
+                next_run_at=payload.get("next_run_at"),
+            )
+            active_store.record_event(
+                event_type="schedule.created",
+                source="approval",
+                payload={"schedule_id": schedule["id"], "name": schedule["name"], "requested_by": requested_by},
+            )
+            return {"schedule": schedule}
+
+        if action == "schedule.update":
+            schedule = active_store.update_schedule(
+                subject_ref,
+                name=str(payload.get("name", "Untitled schedule")),
+                target_type=str(payload.get("target_type", "skill")),
+                target_ref=str(payload.get("target_ref", "")),
+                schedule_expression=str(payload.get("schedule_expression", "")),
+                timezone=str(payload.get("timezone", "America/New_York")),
+                enabled=bool(payload.get("enabled", True)),
+                last_run_at=payload.get("last_run_at"),
+                next_run_at=payload.get("next_run_at"),
+            )
+            active_store.record_event(
+                event_type="schedule.updated",
+                source="approval",
+                payload={"schedule_id": subject_ref, "enabled": schedule["enabled"], "requested_by": requested_by},
+            )
+            return {"schedule": schedule}
+
+        if action == "schedule.delete":
+            active_store.delete_schedule(subject_ref)
+            active_store.record_event(
+                event_type="schedule.deleted",
+                source="approval",
+                payload={"schedule_id": subject_ref, "requested_by": requested_by},
+            )
+            return {"schedule_id": subject_ref}
+
+        if action == "memory.ingest":
+            item = memory_engine.ingest(
+                title=str(payload.get("title", "Untitled memory")),
+                summary=str(payload.get("summary", "")),
+                content=str(payload.get("content", "")),
+                provenance=str(payload.get("provenance", "approval")),
+                source_ref=str(payload.get("source_ref", "")),
+                layer=str(payload.get("layer", "Semantic")),
+                scope=str(payload.get("scope", "workspace")),
+                confidence=float(payload.get("confidence", 0.7)),
+                freshness=float(payload.get("freshness", 0.7)),
+                tags=list(payload.get("tags", [])) if isinstance(payload.get("tags", []), list) else [],
+                state=str(payload.get("state", "candidate")),
+            )
+            return {"memory_item": item}
+
+        if action == "orchestration.launch":
+            result = orchestration_engine.launch(
+                objective=str(payload.get("objective", "")),
+                task_title=payload.get("task_title") if isinstance(payload.get("task_title"), str) else None,
+                task_summary=payload.get("task_summary") if isinstance(payload.get("task_summary"), str) else None,
+                requested_by=requested_by,
+                mode=str(payload.get("mode", "Supervised")),
+                priority=str(payload.get("priority", "High")),
+                task_id=payload.get("task_id") if isinstance(payload.get("task_id"), str) else None,
+                bypass_policy=True,
+            )
+            return {
+                "task": result.task,
+                "task_run": result.task_run,
+                "agent_runs": result.agent_runs,
+            }
+
+        raise HTTPException(status_code=422, detail=f"Unsupported approval action: {action}")
 
     @app.get("/health", response_model=HealthResponse)
     def health() -> HealthResponse:
@@ -84,8 +391,51 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
     def status() -> StatusResponse:
         return StatusResponse(
             mode="operational",
-            note="Local persistence and event log are active",
+            note="Local persistence, event log, and autonomy policy are active",
         )
+
+    @app.get("/api/policy", response_model=PolicyRecord)
+    def get_policy() -> PolicyRecord:
+        return PolicyRecord(**policy_engine.snapshot())
+
+    @app.patch("/api/policy", response_model=PolicyRecord)
+    def update_policy(payload: PolicyUpdateRequest) -> PolicyRecord:
+        policy = policy_engine.update(
+            autonomy_mode=payload.autonomy_mode,
+            kill_switch=payload.kill_switch,
+            approval_bias=payload.approval_bias,
+        )
+        active_store.record_event(
+            event_type="policy.updated",
+            source="ui",
+            payload=policy,
+        )
+        return PolicyRecord(**policy)
+
+    @app.get("/api/approvals", response_model=list[ApprovalRequestRecord])
+    def list_approvals(limit: int = 25) -> list[ApprovalRequestRecord]:
+        if limit < 1 or limit > 100:
+            raise HTTPException(status_code=400, detail="limit must be between 1 and 100")
+        return [ApprovalRequestRecord(**request) for request in active_store.list_approval_requests(limit=limit)]
+
+    @app.post("/api/approvals/{approval_id}/resolve", response_model=ApprovalRequestRecord)
+    def resolve_approval(approval_id: str, payload: ApprovalResolveRequest) -> ApprovalRequestRecord:
+        updated = active_store.update_approval_request(
+            approval_id,
+            status=payload.status,
+            resolved_by=payload.resolved_by,
+        )
+        if payload.status == "approved":
+            approval = active_store.get_approval_request(approval_id)
+            if approval is None:
+                raise HTTPException(status_code=404, detail="Approval request not found")
+            _execute_approved_request(approval)
+        active_store.record_event(
+            event_type="approval.resolved",
+            source="ui",
+            payload={"approval_id": approval_id, "status": payload.status, "resolved_by": payload.resolved_by},
+        )
+        return ApprovalRequestRecord(**updated)
 
     @app.get("/workspace", response_model=WorkspaceSummary)
     @app.get("/api/workspace", response_model=WorkspaceSummary)
@@ -102,6 +452,12 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
 
     @app.post("/api/tasks", response_model=TaskRecord, status_code=201)
     def create_task(payload: TaskCreateRequest) -> TaskRecord:
+        _gate_mutation(
+            action="task.create",
+            subject_type="task",
+            subject_ref=payload.title,
+            payload=payload.model_dump(),
+        )
         task = active_store.create_task(
             title=payload.title,
             summary=payload.summary,
@@ -124,6 +480,12 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
 
     @app.patch("/api/tasks/{task_id}", response_model=TaskRecord)
     def update_task(task_id: str, payload: TaskUpdateRequest) -> TaskRecord:
+        _gate_mutation(
+            action="task.update",
+            subject_type="task",
+            subject_ref=task_id,
+            payload=payload.model_dump(),
+        )
         task = active_store.update_task(
             task_id,
             title=payload.title,
@@ -140,6 +502,12 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
 
     @app.delete("/api/tasks/{task_id}", status_code=204)
     def delete_task(task_id: str) -> None:
+        _gate_mutation(
+            action="task.delete",
+            subject_type="task",
+            subject_ref=task_id,
+            payload={"task_id": task_id},
+        )
         active_store.delete_task(task_id)
         active_store.record_event(
             event_type="task.deleted",
@@ -153,6 +521,12 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
 
     @app.post("/api/agents", response_model=AgentRecord, status_code=201)
     def create_agent(payload: AgentCreateRequest) -> AgentRecord:
+        _gate_mutation(
+            action="agent.create",
+            subject_type="agent",
+            subject_ref=payload.name,
+            payload=payload.model_dump(),
+        )
         agent = active_store.create_agent(name=payload.name, role=payload.role, status=payload.status)
         active_store.record_event(
             event_type="agent.created",
@@ -170,6 +544,12 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
 
     @app.patch("/api/agents/{agent_id}", response_model=AgentRecord)
     def update_agent(agent_id: str, payload: AgentUpdateRequest) -> AgentRecord:
+        _gate_mutation(
+            action="agent.update",
+            subject_type="agent",
+            subject_ref=agent_id,
+            payload=payload.model_dump(),
+        )
         agent = active_store.update_agent(agent_id, name=payload.name, role=payload.role, status=payload.status)
         active_store.record_event(
             event_type="agent.updated",
@@ -180,6 +560,12 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
 
     @app.delete("/api/agents/{agent_id}", status_code=204)
     def delete_agent(agent_id: str) -> None:
+        _gate_mutation(
+            action="agent.delete",
+            subject_type="agent",
+            subject_ref=agent_id,
+            payload={"agent_id": agent_id},
+        )
         active_store.delete_agent(agent_id)
         active_store.record_event(
             event_type="agent.deleted",
@@ -193,6 +579,12 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
 
     @app.post("/api/projects", response_model=ProjectRecord, status_code=201)
     def create_project(payload: ProjectCreateRequest) -> ProjectRecord:
+        _gate_mutation(
+            action="project.create",
+            subject_type="project",
+            subject_ref=payload.name,
+            payload=payload.model_dump(),
+        )
         project = active_store.create_project(name=payload.name, summary=payload.summary, status=payload.status, owner=payload.owner)
         active_store.record_event(
             event_type="project.created",
@@ -210,6 +602,12 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
 
     @app.patch("/api/projects/{project_id}", response_model=ProjectRecord)
     def update_project(project_id: str, payload: ProjectUpdateRequest) -> ProjectRecord:
+        _gate_mutation(
+            action="project.update",
+            subject_type="project",
+            subject_ref=project_id,
+            payload=payload.model_dump(),
+        )
         project = active_store.update_project(
             project_id,
             name=payload.name,
@@ -226,6 +624,12 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
 
     @app.delete("/api/projects/{project_id}", status_code=204)
     def delete_project(project_id: str) -> None:
+        _gate_mutation(
+            action="project.delete",
+            subject_type="project",
+            subject_ref=project_id,
+            payload={"project_id": project_id},
+        )
         active_store.delete_project(project_id)
         active_store.record_event(
             event_type="project.deleted",
@@ -239,6 +643,12 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
 
     @app.post("/api/skills", response_model=SkillRecord, status_code=201)
     def create_skill(payload: SkillCreateRequest) -> SkillRecord:
+        _gate_mutation(
+            action="skill.create",
+            subject_type="skill",
+            subject_ref=payload.name,
+            payload=payload.model_dump(),
+        )
         skill = active_store.create_skill(
             name=payload.name,
             description=payload.description,
@@ -263,6 +673,12 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
 
     @app.patch("/api/skills/{skill_id}", response_model=SkillRecord)
     def update_skill(skill_id: str, payload: SkillUpdateRequest) -> SkillRecord:
+        _gate_mutation(
+            action="skill.update",
+            subject_type="skill",
+            subject_ref=skill_id,
+            payload=payload.model_dump(),
+        )
         skill = active_store.update_skill(
             skill_id,
             name=payload.name,
@@ -281,6 +697,12 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
 
     @app.delete("/api/skills/{skill_id}", status_code=204)
     def delete_skill(skill_id: str) -> None:
+        _gate_mutation(
+            action="skill.delete",
+            subject_type="skill",
+            subject_ref=skill_id,
+            payload={"skill_id": skill_id},
+        )
         active_store.delete_skill(skill_id)
         active_store.record_event(
             event_type="skill.deleted",
@@ -294,6 +716,12 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
 
     @app.post("/api/schedules", response_model=ScheduleRecord, status_code=201)
     def create_schedule(payload: ScheduleCreateRequest) -> ScheduleRecord:
+        _gate_mutation(
+            action="schedule.create",
+            subject_type="schedule",
+            subject_ref=payload.name,
+            payload=payload.model_dump(),
+        )
         schedule = active_store.create_schedule(
             name=payload.name,
             target_type=payload.target_type,
@@ -320,6 +748,12 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
 
     @app.patch("/api/schedules/{schedule_id}", response_model=ScheduleRecord)
     def update_schedule(schedule_id: str, payload: ScheduleUpdateRequest) -> ScheduleRecord:
+        _gate_mutation(
+            action="schedule.update",
+            subject_type="schedule",
+            subject_ref=schedule_id,
+            payload=payload.model_dump(),
+        )
         schedule = active_store.update_schedule(
             schedule_id,
             name=payload.name,
@@ -340,6 +774,12 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
 
     @app.delete("/api/schedules/{schedule_id}", status_code=204)
     def delete_schedule(schedule_id: str) -> None:
+        _gate_mutation(
+            action="schedule.delete",
+            subject_type="schedule",
+            subject_ref=schedule_id,
+            payload={"schedule_id": schedule_id},
+        )
         active_store.delete_schedule(schedule_id)
         active_store.record_event(
             event_type="schedule.deleted",
@@ -359,6 +799,12 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
 
     @app.post("/api/memory/items", response_model=MemoryItemRecord, status_code=201)
     def ingest_memory(payload: MemoryIngestRequest) -> MemoryItemRecord:
+        _gate_mutation(
+            action="memory.ingest",
+            subject_type="memory_item",
+            subject_ref=payload.title,
+            payload=payload.model_dump(),
+        )
         item = memory_engine.ingest(
             title=payload.title,
             summary=payload.summary,
@@ -415,6 +861,12 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
 
     @app.post("/api/orchestration/launch", response_model=OrchestrationLaunchResponse, status_code=201)
     def launch_orchestration(payload: OrchestrationLaunchRequest) -> OrchestrationLaunchResponse:
+        _gate_mutation(
+            action="orchestration.launch",
+            subject_type="task_run",
+            subject_ref=payload.task_title or payload.objective[:48],
+            payload=payload.model_dump(),
+        )
         result = orchestration_engine.launch(
             objective=payload.objective,
             task_title=payload.task_title,

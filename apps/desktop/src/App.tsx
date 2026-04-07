@@ -26,6 +26,10 @@ type WorkspaceSnapshot = {
   workspace: {
     name: string;
     mode: string;
+    autonomy_mode: string;
+    kill_switch: boolean;
+    approval_bias: string;
+    mode_label: string;
     status: string;
     active_project: string;
     phase: string;
@@ -39,6 +43,21 @@ type WorkspaceSnapshot = {
   memory_items: MemoryItem[];
   task_runs: TaskRun[];
   agent_runs: AgentRun[];
+  approval_requests: Array<{
+    id: string;
+    action: string;
+    subject_type: string;
+    subject_ref: string;
+    sensitivity: string;
+    status: string;
+    reason: string;
+    payload: Record<string, unknown>;
+    requested_by: string;
+    created_at: string;
+    updated_at: string;
+    resolved_at: string | null;
+    resolved_by: string | null;
+  }>;
   recent_events: Array<{
     id: number;
     type: string;
@@ -56,6 +75,7 @@ type WorkspaceSnapshot = {
     memory_items: number;
     task_runs: number;
     agent_runs: number;
+    approval_requests: number;
     events: number;
   };
 };
@@ -84,10 +104,21 @@ type LaunchResponse = {
 
 type CrudDraft = Record<string, string | boolean>;
 
+type PolicyUpdateResponse = {
+  autonomy_mode: string;
+  kill_switch: boolean;
+  approval_bias: string;
+  mode_label: string;
+};
+
 const fallbackSnapshot: WorkspaceSnapshot = {
   workspace: {
     name: workspaceSummary.name,
     mode: workspaceSummary.mode,
+    autonomy_mode: 'Supervised',
+    kill_switch: false,
+    approval_bias: 'supervised',
+    mode_label: 'Global autonomy and approval policy',
     status: workspaceSummary.status,
     active_project: workspaceSummary.activeProject,
     phase: 'Orchestration runtime foundation'
@@ -101,6 +132,7 @@ const fallbackSnapshot: WorkspaceSnapshot = {
   memory_items: seedMemoryItems,
   task_runs: [],
   agent_runs: [],
+  approval_requests: [],
   recent_events: [],
   counts: {
     tasks: seedTasks.length,
@@ -112,6 +144,7 @@ const fallbackSnapshot: WorkspaceSnapshot = {
     memory_items: seedMemoryItems.length,
     task_runs: 0,
     agent_runs: 0,
+    approval_requests: 0,
     events: 0
   }
 };
@@ -145,7 +178,7 @@ async function retrieveMemory(query: string, role: string, scope: string | null)
   return (await response.json()) as MemoryRetrievalResult;
 }
 
-async function launchOrchestration(objective: string): Promise<LaunchResponse> {
+async function launchOrchestration(objective: string, mode: string): Promise<LaunchResponse> {
   const response = await fetch('/api/orchestration/launch', {
     method: 'POST',
     headers: {
@@ -156,16 +189,51 @@ async function launchOrchestration(objective: string): Promise<LaunchResponse> {
       task_title: objective.slice(0, 48),
       task_summary: objective,
       requested_by: 'desktop',
-      mode: 'Supervised',
+      mode,
       priority: 'High'
     })
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to launch orchestration: ${response.status}`);
+    throw new Error(await readErrorDetail(response, `Failed to launch orchestration: ${response.status}`));
   }
 
   return (await response.json()) as LaunchResponse;
+}
+
+async function readErrorDetail(response: Response, fallback: string): Promise<string> {
+  try {
+    const body = (await response.json()) as { detail?: { message?: string } | string };
+    if (typeof body.detail === 'string') {
+      return body.detail;
+    }
+    if (body.detail && typeof body.detail.message === 'string') {
+      return body.detail.message;
+    }
+  } catch {
+    return fallback;
+  }
+  return fallback;
+}
+
+async function updatePolicy(payload: {
+  autonomy_mode?: string;
+  kill_switch?: boolean;
+  approval_bias?: string;
+}): Promise<PolicyUpdateResponse> {
+  const response = await fetch('/api/policy', {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    throw new Error(await readErrorDetail(response, `Failed to update policy: ${response.status}`));
+  }
+
+  return (await response.json()) as PolicyUpdateResponse;
 }
 
 function buildRunTree(agentRuns: AgentRun[]): AgentRun[] {
@@ -294,9 +362,12 @@ export default function App() {
   const [memoryError, setMemoryError] = useState<string | null>(null);
   const [memoryState, setMemoryState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [launchObjective, setLaunchObjective] = useState('Implement phase 3 orchestration runtime for Gnosys');
+  const [launchMode, setLaunchMode] = useState('Supervised');
   const [launchState, setLaunchState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [launchError, setLaunchError] = useState<string | null>(null);
   const [launchResponse, setLaunchResponse] = useState<LaunchResponse | null>(null);
+  const [policyState, setPolicyState] = useState<'idle' | 'saving' | 'error'>('idle');
+  const [policyError, setPolicyError] = useState<string | null>(null);
   const [crudKind, setCrudKind] = useState<CrudKind>('tasks');
   const [crudSelectionId, setCrudSelectionId] = useState<string>('');
   const [crudDraft, setCrudDraft] = useState<CrudDraft>({});
@@ -323,11 +394,11 @@ export default function App() {
     }
   }
 
-  async function runLaunch(objective = launchObjective) {
+  async function runLaunch(objective = launchObjective, mode = launchMode) {
     setLaunchState('loading');
     setLaunchError(null);
     try {
-      const result = await launchOrchestration(objective);
+      const result = await launchOrchestration(objective, mode);
       setLaunchResponse(result);
       await refreshSnapshot();
       setLaunchState('ready');
@@ -335,6 +406,43 @@ export default function App() {
     } catch (error) {
       setLaunchError(error instanceof Error ? error.message : 'Failed to launch orchestration');
       setLaunchState('error');
+    }
+  }
+
+  async function savePolicyMode(nextMode: string, nextKillSwitch: boolean) {
+    setPolicyState('saving');
+    setPolicyError(null);
+    try {
+      const updated = await updatePolicy({ autonomy_mode: nextMode, kill_switch: nextKillSwitch });
+      setLaunchMode(updated.autonomy_mode);
+      await refreshSnapshot();
+      setPolicyState('idle');
+      setActiveTab('Logs');
+    } catch (error) {
+      setPolicyError(error instanceof Error ? error.message : 'Failed to update policy');
+      setPolicyState('error');
+    }
+  }
+
+  async function resolveApproval(approvalId: string, status: 'approved' | 'rejected') {
+    setPolicyState('saving');
+    setPolicyError(null);
+    try {
+      const response = await fetch(`/api/approvals/${approvalId}/resolve`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ status, resolved_by: 'desktop' })
+      });
+      if (!response.ok) {
+        throw new Error(await readErrorDetail(response, `Failed to resolve approval: ${response.status}`));
+      }
+      await refreshSnapshot();
+      setPolicyState('idle');
+    } catch (error) {
+      setPolicyError(error instanceof Error ? error.message : 'Failed to resolve approval');
+      setPolicyState('error');
     }
   }
 
@@ -357,7 +465,7 @@ export default function App() {
       });
 
       if (!response.ok) {
-        throw new Error(`Failed to save ${crudKind}: ${response.status}`);
+        throw new Error(await readErrorDetail(response, `Failed to save ${crudKind}: ${response.status}`));
       }
 
       const saved = (await response.json()) as { id: string };
@@ -387,7 +495,7 @@ export default function App() {
         method: 'DELETE'
       });
       if (!response.ok && response.status !== 204) {
-        throw new Error(`Failed to delete ${crudKind}: ${response.status}`);
+        throw new Error(await readErrorDetail(response, `Failed to delete ${crudKind}: ${response.status}`));
       }
       const nextSnapshot = await refreshSnapshot();
       const items = getCrudItems(nextSnapshot, crudKind) as Array<{ id: string }>;
@@ -448,6 +556,10 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    setLaunchMode(snapshot.workspace.autonomy_mode);
+  }, [snapshot.workspace.autonomy_mode]);
+
+  useEffect(() => {
     if (crudSelectionId === NEW_ITEM_SENTINEL) {
       return;
     }
@@ -467,6 +579,7 @@ export default function App() {
 
   const selectedAgent = snapshot.agents[0] ?? fallbackSnapshot.agents[0];
   const activeMemoryLayer = snapshot.memory_layers[0] ?? fallbackSnapshot.memory_layers[0];
+  const pendingApprovals = snapshot.approval_requests.filter((request) => request.status === 'pending');
   const currentRun = launchResponse?.task_run ?? snapshot.task_runs[0] ?? null;
   const currentRunTree = currentRun ? buildRunTree(snapshot.agent_runs.filter((run) => run.task_run_id === currentRun.id)) : [];
   const activeCrudItems = getCrudItems(snapshot, crudKind);
@@ -530,7 +643,7 @@ export default function App() {
             <h2>Memory, delegation, and bounded worker runs now sit on the same local foundation.</h2>
           </div>
           <div className="status-pill">
-            {snapshot.workspace.mode} · {snapshot.workspace.status} · {loadingState}
+            {snapshot.workspace.autonomy_mode} · {snapshot.workspace.status} · {loadingState}
           </div>
         </header>
 
@@ -547,11 +660,15 @@ export default function App() {
             <span>Memory</span>
             <strong>{activeMemoryLayer.name}</strong>
           </article>
-          <article>
-            <span>Runs</span>
-            <strong>{snapshot.counts.task_runs}</strong>
-          </article>
-        </section>
+            <article>
+              <span>Runs</span>
+              <strong>{snapshot.counts.task_runs}</strong>
+            </article>
+            <article>
+              <span>Approvals</span>
+              <strong>{snapshot.counts.approval_requests}</strong>
+            </article>
+          </section>
 
         <section className="content-grid">
           <section className="panel panel-wide">
@@ -587,6 +704,14 @@ export default function App() {
               <p>{snapshot.workspace.phase}</p>
             </div>
             <div className="detail">
+              <strong>Autonomy mode</strong>
+              <p>{snapshot.workspace.autonomy_mode}</p>
+            </div>
+            <div className="detail">
+              <strong>Approval bias</strong>
+              <p>{snapshot.workspace.approval_bias}</p>
+            </div>
+            <div className="detail">
               <strong>Memory</strong>
               <p>{activeMemoryLayer.description}</p>
             </div>
@@ -600,6 +725,14 @@ export default function App() {
               <strong>Run status</strong>
               <p>{launchState}</p>
             </div>
+            <div className="detail">
+              <strong>Kill switch</strong>
+              <p>{snapshot.workspace.kill_switch ? 'Enabled' : 'Disabled'}</p>
+            </div>
+            <div className="detail">
+              <strong>Pending approvals</strong>
+              <p>{pendingApprovals.length}</p>
+            </div>
           </aside>
         </section>
 
@@ -611,11 +744,17 @@ export default function App() {
               onChange={(event) => setLaunchObjective(event.target.value)}
               aria-label="Launch objective"
             />
+            <select value={launchMode} onChange={(event) => setLaunchMode(event.target.value)}>
+              <option>Manual</option>
+              <option>Supervised</option>
+              <option>Autonomous</option>
+              <option>Full Access</option>
+            </select>
             <button className="primary-action" onClick={() => void runLaunch()}>
               Launch run
             </button>
           </div>
-          <p className="event-hint">This creates a task, a task run, specialist runs, and bounded workers with an inspectable tree.</p>
+          <p className="event-hint">The backend applies the active autonomy policy before execution. The launch selector records the requested run mode, but policy can still gate the request.</p>
           {launchError && <p className="error-banner">{launchError}</p>}
           {launchResponse && (
             <div className="launch-summary">
@@ -623,6 +762,61 @@ export default function App() {
               <p>{launchResponse.task_run.status} · {launchResponse.agent_runs.length} runs created · {launchResponse.steps.length} steps</p>
             </div>
           )}
+        </section>
+
+        <section className="panel orchestration-panel">
+          <div className="panel-title">Autonomy controls</div>
+          <div className="orchestration-controls">
+            <select value={snapshot.workspace.autonomy_mode} onChange={(event) => void savePolicyMode(event.target.value, snapshot.workspace.kill_switch)}>
+              <option>Manual</option>
+              <option>Supervised</option>
+              <option>Autonomous</option>
+              <option>Full Access</option>
+            </select>
+            <button
+              className={snapshot.workspace.kill_switch ? 'primary-action danger' : 'tab'}
+              onClick={() => void savePolicyMode(snapshot.workspace.autonomy_mode, !snapshot.workspace.kill_switch)}
+            >
+              {snapshot.workspace.kill_switch ? 'Disable kill switch' : 'Enable kill switch'}
+            </button>
+          </div>
+          <p className="event-hint">
+            {snapshot.workspace.mode_label} · current mode: {snapshot.workspace.autonomy_mode} · kill switch {snapshot.workspace.kill_switch ? 'armed' : 'clear'} · full access mode bypasses approval gates unless the kill switch is armed
+          </p>
+          {policyError && <p className="error-banner">{policyError}</p>}
+          <div className="launch-summary">
+            <strong>{pendingApprovals.length} pending approval request{pendingApprovals.length === 1 ? '' : 's'}</strong>
+            <p>{snapshot.workspace.approval_bias} gating is enforced in the backend before writes or launches proceed.</p>
+          </div>
+        </section>
+
+        <section className="panel orchestration-panel">
+          <div className="panel-title">Approval queue</div>
+          <div className="stack compact">
+            {pendingApprovals.map((request) => (
+              <article key={request.id} className="run-node">
+                <div className="run-node-top">
+                  <strong>{request.action}</strong>
+                  <span>{request.sensitivity} · {request.subject_type}</span>
+                </div>
+                <p>{request.reason}</p>
+                <div className="run-node-meta">
+                  <span>{request.subject_ref}</span>
+                  <span>{request.requested_by}</span>
+                  <span>{request.created_at}</span>
+                </div>
+                <div className="crud-actions">
+                  <button className="primary-action" onClick={() => void resolveApproval(request.id, 'approved')}>
+                    Approve
+                  </button>
+                  <button className="tab" onClick={() => void resolveApproval(request.id, 'rejected')}>
+                    Reject
+                  </button>
+                </div>
+              </article>
+            ))}
+            {pendingApprovals.length === 0 && <p>No pending approval requests.</p>}
+          </div>
         </section>
 
         <section className="panel orchestration-panel">

@@ -134,7 +134,11 @@ export interface MemoryRetrievalResult {
 
 export interface WorkspaceSummary {
   name: string;
-  mode: 'Manual' | 'Supervised' | 'Autonomous';
+  mode: 'Manual' | 'Supervised' | 'Autonomous' | 'Full Access';
+  autonomy_mode: 'Manual' | 'Supervised' | 'Autonomous' | 'Full Access';
+  kill_switch: boolean;
+  approval_bias: string;
+  mode_label: string;
   status: 'Bootstrapping' | 'Healthy' | 'Degraded';
   activeProject: string;
 }
@@ -153,6 +157,10 @@ export const navSections: NavSection[] = [
 export const workspaceSummary: WorkspaceSummary = {
   name: 'Gnosys',
   mode: 'Supervised',
+  autonomy_mode: 'Supervised',
+  kill_switch: false,
+  approval_bias: 'supervised',
+  mode_label: 'Global autonomy and approval policy',
   status: 'Bootstrapping',
   activeProject: 'Core Console'
 };
