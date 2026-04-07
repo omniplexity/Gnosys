@@ -43,6 +43,23 @@ type WorkspaceSnapshot = {
   memory_items: MemoryItem[];
   task_runs: TaskRun[];
   agent_runs: AgentRun[];
+  schedule_runs: Array<{
+    id: string;
+    schedule_id: string;
+    schedule_name: string;
+    target_type: string;
+    target_ref: string;
+    status: string;
+    attempt_number: number;
+    retry_of_run_id: string | null;
+    task_run_id: string | null;
+    requested_by: string;
+    result_summary: string;
+    last_error: string | null;
+    created_at: string;
+    updated_at: string;
+    completed_at: string | null;
+  }>;
   approval_requests: Array<{
     id: string;
     action: string;
@@ -57,6 +74,15 @@ type WorkspaceSnapshot = {
     updated_at: string;
     resolved_at: string | null;
     resolved_by: string | null;
+  }>;
+  entity_policies: Array<{
+    entity_type: string;
+    entity_id: string;
+    autonomy_mode: string;
+    kill_switch: boolean;
+    approval_bias: string;
+    created_at: string;
+    updated_at: string;
   }>;
   recent_events: Array<{
     id: number;
@@ -75,7 +101,9 @@ type WorkspaceSnapshot = {
     memory_items: number;
     task_runs: number;
     agent_runs: number;
+    schedule_runs: number;
     approval_requests: number;
+    entity_policies: number;
     events: number;
   };
 };
@@ -111,6 +139,29 @@ type PolicyUpdateResponse = {
   mode_label: string;
 };
 
+type EntityPolicyRecord = {
+  entity_type: string;
+  entity_id: string;
+  autonomy_mode: string;
+  kill_switch: boolean;
+  approval_bias: string;
+  created_at: string;
+  updated_at: string;
+};
+
+type ReplayResponse = {
+  task_run: TaskRun;
+  agent_runs: AgentRun[];
+  events: Array<{
+    id: number;
+    type: string;
+    source: string;
+    payload: Record<string, unknown>;
+    created_at: string;
+  }>;
+  schedule_runs: WorkspaceSnapshot['schedule_runs'];
+};
+
 const fallbackSnapshot: WorkspaceSnapshot = {
   workspace: {
     name: workspaceSummary.name,
@@ -132,7 +183,9 @@ const fallbackSnapshot: WorkspaceSnapshot = {
   memory_items: seedMemoryItems,
   task_runs: [],
   agent_runs: [],
+  schedule_runs: [],
   approval_requests: [],
+  entity_policies: [],
   recent_events: [],
   counts: {
     tasks: seedTasks.length,
@@ -144,7 +197,9 @@ const fallbackSnapshot: WorkspaceSnapshot = {
     memory_items: seedMemoryItems.length,
     task_runs: 0,
     agent_runs: 0,
+    schedule_runs: 0,
     approval_requests: 0,
+    entity_policies: 0,
     events: 0
   }
 };
@@ -162,13 +217,16 @@ async function loadSnapshot(): Promise<WorkspaceSnapshot> {
   return (await response.json()) as WorkspaceSnapshot;
 }
 
-async function retrieveMemory(query: string, role: string, scope: string | null): Promise<MemoryRetrievalResult> {
+async function retrieveMemory(query: string, role: string, scope: string | null, projectId: string | null): Promise<MemoryRetrievalResult> {
   const params = new URLSearchParams({
     query,
     role
   });
   if (scope) {
     params.set('scope', scope);
+  }
+  if (projectId) {
+    params.set('project_id', projectId);
   }
 
   const response = await fetch(`/api/memory/retrieve?${params.toString()}`);
@@ -236,6 +294,54 @@ async function updatePolicy(payload: {
   return (await response.json()) as PolicyUpdateResponse;
 }
 
+async function updateEntityPolicy(entityType: string, entityId: string, payload: {
+  autonomy_mode?: string;
+  kill_switch?: boolean;
+  approval_bias?: string;
+}): Promise<EntityPolicyRecord> {
+  const response = await fetch(`/api/policies/entities/${entityType}/${entityId}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    throw new Error(await readErrorDetail(response, `Failed to update entity policy: ${response.status}`));
+  }
+
+  return (await response.json()) as EntityPolicyRecord;
+}
+
+async function runSchedule(scheduleId: string): Promise<{ id: string }> {
+  const response = await fetch(`/api/schedules/${scheduleId}/run`, {
+    method: 'POST'
+  });
+  if (!response.ok) {
+    throw new Error(await readErrorDetail(response, `Failed to run schedule: ${response.status}`));
+  }
+  return (await response.json()) as { id: string };
+}
+
+async function retryScheduleRun(runId: string): Promise<{ id: string }> {
+  const response = await fetch(`/api/schedule-runs/${runId}/retry`, {
+    method: 'POST'
+  });
+  if (!response.ok) {
+    throw new Error(await readErrorDetail(response, `Failed to retry schedule run: ${response.status}`));
+  }
+  return (await response.json()) as { id: string };
+}
+
+async function loadReplay(taskRunId: string): Promise<ReplayResponse> {
+  const response = await fetch(`/api/diagnostics/replay/${taskRunId}`);
+  if (!response.ok) {
+    throw new Error(await readErrorDetail(response, `Failed to load replay: ${response.status}`));
+  }
+  return (await response.json()) as ReplayResponse;
+}
+
 function buildRunTree(agentRuns: AgentRun[]): AgentRun[] {
   return agentRuns.slice().sort((left, right) => {
     if (left.recursion_depth !== right.recursion_depth) {
@@ -274,7 +380,8 @@ function normalizeCrudDraft(kind: CrudKind, draft: CrudDraft): Record<string, un
         title: String(draft.title ?? ''),
         summary: String(draft.summary ?? ''),
         status: String(draft.status ?? 'Inbox'),
-        priority: String(draft.priority ?? 'Medium')
+        priority: String(draft.priority ?? 'Medium'),
+        project_id: draft.project_id ? String(draft.project_id) : null
       };
     case 'projects':
       return {
@@ -296,7 +403,8 @@ function normalizeCrudDraft(kind: CrudKind, draft: CrudDraft): Record<string, un
         scope: String(draft.scope ?? 'workspace'),
         version: String(draft.version ?? '0.1.0'),
         source_type: String(draft.source_type ?? 'authored'),
-        status: String(draft.status ?? 'draft')
+        status: String(draft.status ?? 'draft'),
+        project_id: draft.project_id ? String(draft.project_id) : null
       };
     case 'schedules':
       return {
@@ -307,7 +415,8 @@ function normalizeCrudDraft(kind: CrudKind, draft: CrudDraft): Record<string, un
         timezone: String(draft.timezone ?? 'America/New_York'),
         enabled: Boolean(draft.enabled),
         last_run_at: draft.last_run_at ? String(draft.last_run_at) : null,
-        next_run_at: draft.next_run_at ? String(draft.next_run_at) : null
+        next_run_at: draft.next_run_at ? String(draft.next_run_at) : null,
+        project_id: draft.project_id ? String(draft.project_id) : null
       };
   }
 }
@@ -358,6 +467,7 @@ export default function App() {
   const [memoryQuery, setMemoryQuery] = useState('persistence event log');
   const [memoryScope, setMemoryScope] = useState('workspace');
   const [memoryRole, setMemoryRole] = useState('orchestrator');
+  const [memoryProjectId, setMemoryProjectId] = useState('project-001');
   const [retrieval, setRetrieval] = useState<MemoryRetrievalResult | null>(null);
   const [memoryError, setMemoryError] = useState<string | null>(null);
   const [memoryState, setMemoryState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
@@ -373,6 +483,17 @@ export default function App() {
   const [crudDraft, setCrudDraft] = useState<CrudDraft>({});
   const [crudState, setCrudState] = useState<'idle' | 'saving' | 'error'>('idle');
   const [crudError, setCrudError] = useState<string | null>(null);
+  const [policyEntityType, setPolicyEntityType] = useState<'task' | 'project' | 'skill' | 'schedule'>('project');
+  const [policyEntityId, setPolicyEntityId] = useState('project-001');
+  const [policyEntityMode, setPolicyEntityMode] = useState('Supervised');
+  const [policyEntityKillSwitch, setPolicyEntityKillSwitch] = useState(false);
+  const [policyEntityBias, setPolicyEntityBias] = useState('supervised');
+  const [policyEntityState, setPolicyEntityState] = useState<'idle' | 'saving' | 'error'>('idle');
+  const [policyEntityError, setPolicyEntityError] = useState<string | null>(null);
+  const [replayRunId, setReplayRunId] = useState('');
+  const [replay, setReplay] = useState<ReplayResponse | null>(null);
+  const [replayState, setReplayState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [replayError, setReplayError] = useState<string | null>(null);
 
   async function refreshSnapshot() {
     const state = await loadSnapshot();
@@ -380,11 +501,11 @@ export default function App() {
     return state;
   }
 
-  async function runMemorySearch(query = memoryQuery, role = memoryRole, scope = memoryScope) {
+  async function runMemorySearch(query = memoryQuery, role = memoryRole, scope = memoryScope, projectId = memoryProjectId) {
     setMemoryState('loading');
     setMemoryError(null);
     try {
-      const result = await retrieveMemory(query, role, scope || null);
+      const result = await retrieveMemory(query, role, scope || null, projectId || null);
       setRetrieval(result);
       setMemoryState('ready');
       setActiveTab('Trace');
@@ -443,6 +564,62 @@ export default function App() {
     } catch (error) {
       setPolicyError(error instanceof Error ? error.message : 'Failed to resolve approval');
       setPolicyState('error');
+    }
+  }
+
+  async function saveEntityPolicy() {
+    setPolicyEntityState('saving');
+    setPolicyEntityError(null);
+    try {
+      const updated = await updateEntityPolicy(policyEntityType, policyEntityId, {
+        autonomy_mode: policyEntityMode,
+        kill_switch: policyEntityKillSwitch,
+        approval_bias: policyEntityBias
+      });
+      setPolicyEntityMode(updated.autonomy_mode);
+      setPolicyEntityKillSwitch(updated.kill_switch);
+      setPolicyEntityBias(updated.approval_bias);
+      await refreshSnapshot();
+      setPolicyEntityState('idle');
+    } catch (error) {
+      setPolicyEntityError(error instanceof Error ? error.message : 'Failed to update entity policy');
+      setPolicyEntityState('error');
+    }
+  }
+
+  async function executeSchedule(scheduleId: string) {
+    try {
+      await runSchedule(scheduleId);
+      await refreshSnapshot();
+      await runMemorySearch(memoryQuery, memoryRole, memoryScope, memoryProjectId);
+      setActiveTab('Logs');
+    } catch (error) {
+      setPolicyError(error instanceof Error ? error.message : 'Failed to run schedule');
+    }
+  }
+
+  async function retryRun(runId: string) {
+    try {
+      await retryScheduleRun(runId);
+      await refreshSnapshot();
+      setActiveTab('Logs');
+    } catch (error) {
+      setPolicyError(error instanceof Error ? error.message : 'Failed to retry schedule');
+    }
+  }
+
+  async function loadRunReplay(runId: string) {
+    setReplayState('loading');
+    setReplayError(null);
+    try {
+      const result = await loadReplay(runId);
+      setReplay(result);
+      setReplayRunId(runId);
+      setReplayState('ready');
+      setActiveTab('Trace');
+    } catch (error) {
+      setReplayError(error instanceof Error ? error.message : 'Failed to load replay');
+      setReplayState('error');
     }
   }
 
@@ -548,7 +725,7 @@ export default function App() {
     }
 
     void run();
-    void runMemorySearch('persistence event log', 'orchestrator', 'workspace');
+    void runMemorySearch('persistence event log', 'orchestrator', 'workspace', memoryProjectId);
 
     return () => {
       cancelled = true;
@@ -558,6 +735,51 @@ export default function App() {
   useEffect(() => {
     setLaunchMode(snapshot.workspace.autonomy_mode);
   }, [snapshot.workspace.autonomy_mode]);
+
+  useEffect(() => {
+    if (!memoryProjectId || !snapshot.projects.some((project) => project.id === memoryProjectId)) {
+      setMemoryProjectId(snapshot.projects[0]?.id ?? '');
+    }
+  }, [memoryProjectId, snapshot.projects]);
+
+  useEffect(() => {
+    if (!policyEntityId) {
+      return;
+    }
+    const existing = snapshot.entity_policies.find(
+      (policy) => policy.entity_type === policyEntityType && policy.entity_id === policyEntityId
+    );
+    if (existing) {
+      setPolicyEntityMode(existing.autonomy_mode);
+      setPolicyEntityKillSwitch(existing.kill_switch);
+      setPolicyEntityBias(existing.approval_bias);
+      return;
+    }
+
+    const defaultsByType = {
+      task: snapshot.tasks.find((task) => task.id === policyEntityId),
+      project: snapshot.projects.find((project) => project.id === policyEntityId),
+      skill: snapshot.skills.find((skill) => skill.id === policyEntityId),
+      schedule: snapshot.schedules.find((schedule) => schedule.id === policyEntityId)
+    };
+    if (!defaultsByType[policyEntityType]) {
+      return;
+    }
+    setPolicyEntityMode(snapshot.workspace.autonomy_mode);
+    setPolicyEntityKillSwitch(snapshot.workspace.kill_switch);
+    setPolicyEntityBias(snapshot.workspace.approval_bias);
+  }, [
+    policyEntityId,
+    policyEntityType,
+    snapshot.entity_policies,
+    snapshot.projects,
+    snapshot.schedules,
+    snapshot.skills,
+    snapshot.tasks,
+    snapshot.workspace.autonomy_mode,
+    snapshot.workspace.approval_bias,
+    snapshot.workspace.kill_switch
+  ]);
 
   useEffect(() => {
     if (crudSelectionId === NEW_ITEM_SENTINEL) {
@@ -582,6 +804,22 @@ export default function App() {
   const pendingApprovals = snapshot.approval_requests.filter((request) => request.status === 'pending');
   const currentRun = launchResponse?.task_run ?? snapshot.task_runs[0] ?? null;
   const currentRunTree = currentRun ? buildRunTree(snapshot.agent_runs.filter((run) => run.task_run_id === currentRun.id)) : [];
+  const selectedProject = snapshot.projects.find((project) => project.id === memoryProjectId) ?? snapshot.projects[0] ?? null;
+  const selectedSchedule = snapshot.schedules[0] ?? null;
+  const latestScheduleRun = snapshot.schedule_runs[0] ?? null;
+  const replayTaskRunId = replayRunId || currentRun?.id || snapshot.task_runs[0]?.id || '';
+  const policyEntityItems: Array<{ id: string; name: string }> = (() => {
+    switch (policyEntityType) {
+      case 'task':
+        return snapshot.tasks.map((item) => ({ id: item.id, name: item.title }));
+      case 'project':
+        return snapshot.projects.map((item) => ({ id: item.id, name: item.name }));
+      case 'skill':
+        return snapshot.skills.map((item) => ({ id: item.id, name: item.name }));
+      case 'schedule':
+        return snapshot.schedules.map((item) => ({ id: item.id, name: item.name }));
+    }
+  })();
   const activeCrudItems = getCrudItems(snapshot, crudKind);
   const activeCrudItem = crudSelectionId && crudSelectionId !== NEW_ITEM_SENTINEL
     ? activeCrudItems.find((item) => item.id === crudSelectionId) ?? null
@@ -611,7 +849,7 @@ export default function App() {
     const nextSnapshot = await refreshSnapshot();
     setSnapshot(nextSnapshot);
     setActiveTab('Logs');
-    await runMemorySearch(memoryQuery, memoryRole, memoryScope);
+    await runMemorySearch(memoryQuery, memoryRole, memoryScope, memoryProjectId);
   }
 
   return (
@@ -791,6 +1029,101 @@ export default function App() {
         </section>
 
         <section className="panel orchestration-panel">
+          <div className="panel-title">Entity policy controls</div>
+          <div className="orchestration-controls">
+            <select
+              value={policyEntityType}
+              onChange={(event) => {
+                const nextType = event.target.value as typeof policyEntityType;
+                setPolicyEntityType(nextType);
+                const nextId =
+                  nextType === 'task'
+                    ? snapshot.tasks[0]?.id ?? ''
+                    : nextType === 'project'
+                      ? snapshot.projects[0]?.id ?? ''
+                      : nextType === 'skill'
+                        ? snapshot.skills[0]?.id ?? ''
+                        : snapshot.schedules[0]?.id ?? '';
+                setPolicyEntityId(nextId);
+              }}
+            >
+              <option value="project">Project</option>
+              <option value="task">Task</option>
+              <option value="skill">Skill</option>
+              <option value="schedule">Schedule</option>
+            </select>
+            <select
+              value={policyEntityId}
+              onChange={(event) => setPolicyEntityId(event.target.value)}
+            >
+              {policyEntityItems.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+            <select value={policyEntityMode} onChange={(event) => setPolicyEntityMode(event.target.value)}>
+              <option>Manual</option>
+              <option>Supervised</option>
+              <option>Autonomous</option>
+              <option>Full Access</option>
+            </select>
+            <select value={policyEntityBias} onChange={(event) => setPolicyEntityBias(event.target.value)}>
+              <option value="manual">manual</option>
+              <option value="supervised">supervised</option>
+              <option value="autonomous">autonomous</option>
+              <option value="full-access">full-access</option>
+            </select>
+            <label className="toggle-row">
+              Kill switch
+              <input
+                type="checkbox"
+                checked={policyEntityKillSwitch}
+                onChange={(event) => setPolicyEntityKillSwitch(event.target.checked)}
+              />
+            </label>
+            <button className="primary-action" onClick={() => void saveEntityPolicy()}>
+              Save entity policy
+            </button>
+          </div>
+          <p className="event-hint">
+            {policyEntityType} policies override workspace policy for that entity scope. Current selection follows the active project, task, skill, or schedule. Status: {policyEntityState}.
+          </p>
+          {policyEntityError && <p className="error-banner">{policyEntityError}</p>}
+          <div className="stack compact">
+            {snapshot.entity_policies.slice(0, 6).map((policy) => (
+              <article key={`${policy.entity_type}:${policy.entity_id}`} className="run-node">
+                <div className="run-node-top">
+                  <strong>{policy.entity_type}</strong>
+                  <span>{policy.entity_id}</span>
+                </div>
+                <p>
+                  {policy.autonomy_mode} · {policy.approval_bias} · {policy.kill_switch ? 'kill switch enabled' : 'kill switch clear'}
+                </p>
+                <div className="run-node-meta">
+                  <span>{policy.updated_at}</span>
+                  <span>
+                    <button
+                      className="tab"
+                      onClick={() => {
+                        setPolicyEntityType(policy.entity_type as typeof policyEntityType);
+                        setPolicyEntityId(policy.entity_id);
+                        setPolicyEntityMode(policy.autonomy_mode);
+                        setPolicyEntityKillSwitch(policy.kill_switch);
+                        setPolicyEntityBias(policy.approval_bias);
+                      }}
+                    >
+                      Edit
+                    </button>
+                  </span>
+                </div>
+              </article>
+            ))}
+            {snapshot.entity_policies.length === 0 && <p>No entity-specific policies have been created yet.</p>}
+          </div>
+        </section>
+
+        <section className="panel orchestration-panel">
           <div className="panel-title">Approval queue</div>
           <div className="stack compact">
             {pendingApprovals.map((request) => (
@@ -876,6 +1209,63 @@ export default function App() {
           </div>
         </section>
 
+        <section className="panel orchestration-panel">
+          <div className="panel-title">Schedule execution</div>
+          <div className="stack compact">
+            {snapshot.schedules.map((schedule) => (
+              <article key={schedule.id} className="run-node">
+                <div className="run-node-top">
+                  <strong>{schedule.name}</strong>
+                  <span>{schedule.target_type} · {schedule.enabled ? 'enabled' : 'disabled'}</span>
+                </div>
+                <p>{schedule.schedule_expression}</p>
+                <div className="run-node-meta">
+                  <span>{schedule.target_ref}</span>
+                  <span>{schedule.timezone}</span>
+                  <span>{schedule.project_id ?? 'workspace'}</span>
+                </div>
+                <div className="crud-actions">
+                  <button className="primary-action" onClick={() => void executeSchedule(schedule.id)}>
+                    Run now
+                  </button>
+                </div>
+              </article>
+            ))}
+            {snapshot.schedules.length === 0 && <p>No schedules are defined yet.</p>}
+          </div>
+          {snapshot.schedule_runs.length > 0 && (
+            <div className="stack compact" style={{ marginTop: '1rem' }}>
+              {snapshot.schedule_runs.slice(0, 4).map((run) => (
+                <article key={run.id} className="run-node">
+                  <div className="run-node-top">
+                    <strong>{run.schedule_name}</strong>
+                    <span>{run.status} · attempt {run.attempt_number}</span>
+                  </div>
+                  <p>{run.result_summary}</p>
+                  <div className="run-node-meta">
+                    <span>{run.target_type}</span>
+                    <span>{run.task_run_id ?? 'no task run'}</span>
+                    <span>{run.requested_by}</span>
+                  </div>
+                  <div className="crud-actions">
+                    <button className="tab" onClick={() => void retryRun(run.id)}>
+                      Retry
+                    </button>
+                    <button className="tab" onClick={() => run.task_run_id && setReplayRunId(run.task_run_id)}>
+                      Inspect
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+          {selectedSchedule && latestScheduleRun && (
+            <p className="event-hint">
+              Latest run for {selectedSchedule.name}: {latestScheduleRun.status} · {latestScheduleRun.result_summary}
+            </p>
+          )}
+        </section>
+
         <section className="panel crud-panel">
           <div className="panel-title">CRUD workspace</div>
           <div className="crud-tabs">
@@ -934,6 +1324,17 @@ export default function App() {
                         <option>Medium</option>
                         <option>High</option>
                         <option>Critical</option>
+                      </select>
+                    </label>
+                    <label>
+                      Project
+                      <select value={String(crudDraft.project_id ?? '')} onChange={(event) => setCrudDraft((prev) => ({ ...prev, project_id: event.target.value }))}>
+                        <option value="">Workspace</option>
+                        {snapshot.projects.map((project) => (
+                          <option key={project.id} value={project.id}>
+                            {project.name}
+                          </option>
+                        ))}
                       </select>
                     </label>
                   </>
@@ -1021,6 +1422,17 @@ export default function App() {
                         <option>archived</option>
                       </select>
                     </label>
+                    <label>
+                      Project
+                      <select value={String(crudDraft.project_id ?? '')} onChange={(event) => setCrudDraft((prev) => ({ ...prev, project_id: event.target.value }))}>
+                        <option value="">Workspace</option>
+                        {snapshot.projects.map((project) => (
+                          <option key={project.id} value={project.id}>
+                            {project.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
                   </>
                 )}
                 {crudKind === 'schedules' && (
@@ -1057,6 +1469,17 @@ export default function App() {
                         checked={Boolean(crudDraft.enabled)}
                         onChange={(event) => setCrudDraft((prev) => ({ ...prev, enabled: event.target.checked }))}
                       />
+                    </label>
+                    <label>
+                      Project
+                      <select value={String(crudDraft.project_id ?? '')} onChange={(event) => setCrudDraft((prev) => ({ ...prev, project_id: event.target.value }))}>
+                        <option value="">Workspace</option>
+                        {snapshot.projects.map((project) => (
+                          <option key={project.id} value={project.id}>
+                            {project.name}
+                          </option>
+                        ))}
+                      </select>
                     </label>
                   </>
                 )}
@@ -1099,6 +1522,14 @@ export default function App() {
               <option value="session">Session</option>
               <option value="user">User</option>
             </select>
+            <select value={memoryProjectId} onChange={(event) => setMemoryProjectId(event.target.value)}>
+              <option value="">All projects</option>
+              {snapshot.projects.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.name}
+                </option>
+              ))}
+            </select>
             <select value={memoryRole} onChange={(event) => setMemoryRole(event.target.value)}>
               <option value="orchestrator">Orchestrator</option>
               <option value="planner">Planner</option>
@@ -1111,7 +1542,7 @@ export default function App() {
           </div>
           <div className="retrieval-grid">
             <div>
-              <p className="event-hint">Memory results are ranked against confidence, freshness, scope, and role bias.</p>
+              <p className="event-hint">Memory results are ranked against confidence, freshness, scope, role bias, and project scope when selected.</p>
               {memoryError && <p className="error-banner">{memoryError}</p>}
               {retrieval && (
                 <div className="stack compact">
@@ -1156,6 +1587,84 @@ export default function App() {
           </div>
           <p className="event-hint">This writes a durable row into the local SQLite event log and refreshes the UI.</p>
           {errorMessage && <p className="error-banner">{errorMessage}</p>}
+        </section>
+
+        <section className="panel event-panel">
+          <div className="panel-title">Diagnostics replay</div>
+          <div className="event-controls">
+            <select value={replayRunId} onChange={(event) => setReplayRunId(event.target.value)}>
+              <option value="">Select task run</option>
+              {snapshot.task_runs.map((run) => (
+                <option key={run.id} value={run.id}>
+                  {run.id} · {run.status}
+                </option>
+              ))}
+            </select>
+            <button className="primary-action" onClick={() => void loadRunReplay(replayRunId || replayTaskRunId)}>
+              Load replay
+            </button>
+          </div>
+          <p className="event-hint">Replay pulls the task run, agent runs, related events, and schedule runs that point at the same task run.</p>
+          <p className="event-hint">Replay status: {replayState}. Active project for memory routing: {selectedProject?.name ?? 'none'}.</p>
+          {replayError && <p className="error-banner">{replayError}</p>}
+          {replay && (
+            <div className="retrieval-grid">
+              <div className="stack compact">
+                <article className="memory-card">
+                  <div className="memory-card-top">
+                    <strong>{replay.task_run.objective}</strong>
+                    <span>{replay.task_run.status}</span>
+                  </div>
+                  <p>{replay.task_run.summary}</p>
+                  <div className="memory-meta">
+                    <span>{replay.task_run.mode}</span>
+                    <span>{replay.task_run.step_count} steps</span>
+                    <span>{replay.task_run.approval_required ? 'approval required' : 'no approval required'}</span>
+                  </div>
+                </article>
+                {replay.agent_runs.map((run) => (
+                  <article key={run.id} className="memory-card">
+                    <div className="memory-card-top">
+                      <strong>{run.agent_name}</strong>
+                      <span>{run.run_kind} · {run.status}</span>
+                    </div>
+                    <p>{run.summary}</p>
+                    <div className="memory-meta">
+                      <span>depth {run.recursion_depth}</span>
+                      <span>budget {run.budget_units}</span>
+                      <span>{run.task_run_id}</span>
+                    </div>
+                  </article>
+                ))}
+                {replay.schedule_runs.map((run) => (
+                  <article key={run.id} className="memory-card">
+                    <div className="memory-card-top">
+                      <strong>{run.schedule_name}</strong>
+                      <span>{run.status} · attempt {run.attempt_number}</span>
+                    </div>
+                    <p>{run.result_summary}</p>
+                    <div className="memory-meta">
+                      <span>{run.target_type}</span>
+                      <span>{run.target_ref}</span>
+                      <span>{run.requested_by}</span>
+                    </div>
+                  </article>
+                ))}
+              </div>
+              <aside className="trace-panel">
+                <div className="panel-title">Replay events</div>
+                <div className="stack compact">
+                  {replay.events.map((event) => (
+                    <div key={event.id} className="trace-step">
+                      <strong>{event.type}</strong>
+                      <span>{event.created_at}</span>
+                    </div>
+                  ))}
+                  {replay.events.length === 0 && <p>No replay events were found for this run.</p>}
+                </div>
+              </aside>
+            </div>
+          )}
         </section>
 
         <section className="bottom">

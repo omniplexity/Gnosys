@@ -32,6 +32,7 @@ class WorkspaceSummary(BaseModel):
 
 class TaskRecord(BaseModel):
     id: str
+    project_id: str | None = None
     title: str
     summary: str
     status: str
@@ -43,6 +44,7 @@ class TaskCreateRequest(BaseModel):
     summary: str = Field(default="")
     status: str = Field(default="Inbox")
     priority: str = Field(default="Medium")
+    project_id: str | None = None
 
 
 class TaskUpdateRequest(BaseModel):
@@ -50,6 +52,7 @@ class TaskUpdateRequest(BaseModel):
     summary: str = Field(default="")
     status: str = Field(default="Inbox")
     priority: str = Field(default="Medium")
+    project_id: str | None = None
 
 
 class TaskRunRecord(BaseModel):
@@ -125,6 +128,7 @@ class ProjectListItem(BaseModel):
 
 class SkillListItem(BaseModel):
     id: str
+    project_id: str | None = None
     name: str
     description: str
     scope: str
@@ -137,6 +141,7 @@ class SkillListItem(BaseModel):
 
 class ScheduleListItem(BaseModel):
     id: str
+    project_id: str | None = None
     name: str
     target_type: str
     target_ref: str
@@ -175,6 +180,7 @@ class ProjectUpdateRequest(BaseModel):
 
 class SkillRecord(BaseModel):
     id: str
+    project_id: str | None = None
     name: str
     description: str
     scope: str
@@ -192,6 +198,7 @@ class SkillCreateRequest(BaseModel):
     version: str = Field(default="0.1.0")
     source_type: str = Field(default="authored")
     status: str = Field(default="draft")
+    project_id: str | None = None
 
 
 class SkillUpdateRequest(BaseModel):
@@ -201,10 +208,12 @@ class SkillUpdateRequest(BaseModel):
     version: str = Field(default="0.1.0")
     source_type: str = Field(default="authored")
     status: str = Field(default="draft")
+    project_id: str | None = None
 
 
 class ScheduleRecord(BaseModel):
     id: str
+    project_id: str | None = None
     name: str
     target_type: str
     target_ref: str
@@ -224,6 +233,22 @@ class PolicyRecord(BaseModel):
     mode_label: str
 
 
+class EntityPolicyRecord(BaseModel):
+    entity_type: str
+    entity_id: str
+    autonomy_mode: str
+    kill_switch: bool
+    approval_bias: str
+    created_at: str
+    updated_at: str
+
+
+class EntityPolicyUpdateRequest(BaseModel):
+    autonomy_mode: str | None = None
+    kill_switch: bool | None = None
+    approval_bias: str | None = None
+
+
 class PolicyUpdateRequest(BaseModel):
     autonomy_mode: str | None = None
     kill_switch: bool | None = None
@@ -237,6 +262,9 @@ class PolicyDecisionRecord(BaseModel):
     reason: str
     mode: str
     action: str
+    policy_scope: str
+    policy_entity_type: str | None = None
+    policy_entity_id: str | None = None
 
 
 class ApprovalRequestRecord(BaseModel):
@@ -267,6 +295,7 @@ class ScheduleCreateRequest(BaseModel):
     schedule_expression: str = Field(min_length=1)
     timezone: str = Field(default="America/New_York")
     enabled: bool = Field(default=True)
+    project_id: str | None = None
     last_run_at: str | None = None
     next_run_at: str | None = None
 
@@ -278,6 +307,7 @@ class ScheduleUpdateRequest(BaseModel):
     schedule_expression: str = Field(min_length=1)
     timezone: str = Field(default="America/New_York")
     enabled: bool = Field(default=True)
+    project_id: str | None = None
     last_run_at: str | None = None
     next_run_at: str | None = None
 
@@ -286,6 +316,7 @@ class MemoryItemRecord(BaseModel):
     id: str
     layer: str
     scope: str
+    project_id: str | None = None
     state: str
     title: str
     summary: str
@@ -331,6 +362,7 @@ class MemoryIngestRequest(BaseModel):
     source_ref: str = Field(min_length=1)
     layer: str = Field(default="Semantic")
     scope: str = Field(default="workspace")
+    project_id: str | None = None
     confidence: float = Field(default=0.7, ge=0.0, le=1.0)
     freshness: float = Field(default=0.7, ge=0.0, le=1.0)
     tags: list[str] = Field(default_factory=list)
@@ -384,6 +416,35 @@ class OrchestrationRunListResponse(BaseModel):
     task_runs: list[TaskRunRecord]
 
 
+class ScheduleRunRecord(BaseModel):
+    id: str
+    schedule_id: str
+    schedule_name: str
+    target_type: str
+    target_ref: str
+    status: str
+    attempt_number: int
+    retry_of_run_id: str | None = None
+    task_run_id: str | None = None
+    requested_by: str
+    result_summary: str
+    last_error: str | None = None
+    created_at: str
+    updated_at: str
+    completed_at: str | None = None
+
+
+class ScheduleRunListResponse(BaseModel):
+    schedule_runs: list[ScheduleRunRecord]
+
+
+class ReplayResponse(BaseModel):
+    task_run: TaskRunRecord
+    agent_runs: list[AgentRunRecord]
+    events: list[EventRecord]
+    schedule_runs: list[ScheduleRunRecord]
+
+
 class WorkspaceSnapshotResponse(BaseModel):
     workspace: WorkspaceSummary
     tasks: list[TaskRecord]
@@ -396,5 +457,7 @@ class WorkspaceSnapshotResponse(BaseModel):
     task_runs: list[TaskRunRecord]
     agent_runs: list[AgentRunRecord]
     approval_requests: list[ApprovalRequestRecord]
+    schedule_runs: list[ScheduleRunRecord]
+    entity_policies: list[EntityPolicyRecord]
     recent_events: list[EventRecord]
     counts: dict[str, int]

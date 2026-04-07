@@ -28,6 +28,7 @@ WORKSPACE_SEED = {
 TASK_SEED = [
     {
         "id": "task-001",
+        "project_id": "project-001",
         "title": "Desktop shell scaffold",
         "summary": "Build the main console layout and navigation.",
         "status": "Running",
@@ -35,6 +36,7 @@ TASK_SEED = [
     },
     {
         "id": "task-002",
+        "project_id": "project-001",
         "title": "Backend API scaffold",
         "summary": "Expose health, state, and event log endpoints.",
         "status": "Running",
@@ -42,6 +44,7 @@ TASK_SEED = [
     },
     {
         "id": "task-003",
+        "project_id": "project-002",
         "title": "Local persistence layer",
         "summary": "Store workspace state and append-only execution events.",
         "status": "Planned",
@@ -79,6 +82,7 @@ PROJECT_SEED = [
 SKILL_SEED = [
     {
         "id": "skill-001",
+        "project_id": "project-001",
         "name": "Persistence Inspector",
         "description": "Inspect SQLite state, event logs, and runtime runs for consistency.",
         "scope": "workspace",
@@ -88,6 +92,7 @@ SKILL_SEED = [
     },
     {
         "id": "skill-002",
+        "project_id": "project-002",
         "name": "Run Planner",
         "description": "Decompose objectives into bounded steps and specialist responsibilities.",
         "scope": "workspace",
@@ -100,6 +105,7 @@ SKILL_SEED = [
 SCHEDULE_SEED = [
     {
         "id": "schedule-001",
+        "project_id": "project-001",
         "name": "Daily integrity check",
         "target_type": "skill",
         "target_ref": "skill-001",
@@ -137,6 +143,7 @@ MEMORY_ITEM_SEED = [
         "id": "memory-item-001",
         "layer": "Active Context",
         "scope": "session",
+        "project_id": "project-001",
         "state": "validated",
         "title": "Phase 1 completed",
         "summary": "SQLite persistence and append-only event logging are live in the backend.",
@@ -151,6 +158,7 @@ MEMORY_ITEM_SEED = [
         "id": "memory-item-002",
         "layer": "Semantic",
         "scope": "workspace",
+        "project_id": "project-001",
         "state": "validated",
         "title": "Phase 2 target",
         "summary": "Build the memory engine with scoped retrieval and explanation traces.",
@@ -165,6 +173,7 @@ MEMORY_ITEM_SEED = [
         "id": "memory-item-003",
         "layer": "Episodic",
         "scope": "project",
+        "project_id": "project-002",
         "state": "candidate",
         "title": "Retrieval audit note",
         "summary": "Inspect why a memory item was surfaced before it becomes durable.",
@@ -185,6 +194,7 @@ CREATE TABLE IF NOT EXISTS workspace_state (
 
 CREATE TABLE IF NOT EXISTS tasks (
     id TEXT PRIMARY KEY,
+    project_id TEXT,
     title TEXT NOT NULL,
     summary TEXT NOT NULL,
     status TEXT NOT NULL,
@@ -212,6 +222,7 @@ CREATE TABLE IF NOT EXISTS projects (
 
 CREATE TABLE IF NOT EXISTS skills (
     id TEXT PRIMARY KEY,
+    project_id TEXT,
     name TEXT NOT NULL,
     description TEXT NOT NULL,
     scope TEXT NOT NULL,
@@ -224,6 +235,7 @@ CREATE TABLE IF NOT EXISTS skills (
 
 CREATE TABLE IF NOT EXISTS schedules (
     id TEXT PRIMARY KEY,
+    project_id TEXT,
     name TEXT NOT NULL,
     target_type TEXT NOT NULL,
     target_ref TEXT NOT NULL,
@@ -248,6 +260,7 @@ CREATE TABLE IF NOT EXISTS memory_items (
     id TEXT PRIMARY KEY,
     layer TEXT NOT NULL,
     scope TEXT NOT NULL,
+    project_id TEXT,
     state TEXT NOT NULL,
     title TEXT NOT NULL,
     summary TEXT NOT NULL,
@@ -321,10 +334,41 @@ CREATE TABLE IF NOT EXISTS approval_requests (
     resolved_by TEXT
 );
 
+CREATE TABLE IF NOT EXISTS entity_policies (
+    entity_type TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    autonomy_mode TEXT NOT NULL,
+    kill_switch INTEGER NOT NULL,
+    approval_bias TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY(entity_type, entity_id)
+);
+
+CREATE TABLE IF NOT EXISTS schedule_runs (
+    id TEXT PRIMARY KEY,
+    schedule_id TEXT NOT NULL,
+    schedule_name TEXT NOT NULL,
+    target_type TEXT NOT NULL,
+    target_ref TEXT NOT NULL,
+    status TEXT NOT NULL,
+    attempt_number INTEGER NOT NULL,
+    retry_of_run_id TEXT,
+    task_run_id TEXT,
+    requested_by TEXT NOT NULL,
+    result_summary TEXT NOT NULL,
+    last_error TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    completed_at TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_events_created_at ON events(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_task_runs_created_at ON task_runs(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_agent_runs_created_at ON agent_runs(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_approval_requests_created_at ON approval_requests(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_schedule_runs_created_at ON schedule_runs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_entity_policies_updated_at ON entity_policies(updated_at DESC);
 """
 
 
@@ -349,6 +393,26 @@ class GnosysStore:
     def initialize(self) -> None:
         with self.connect() as connection:
             connection.executescript(SCHEMA_SQL)
+            self._ensure_columns(
+                connection,
+                table_name="tasks",
+                columns={"project_id": "TEXT"},
+            )
+            self._ensure_columns(
+                connection,
+                table_name="skills",
+                columns={"project_id": "TEXT"},
+            )
+            self._ensure_columns(
+                connection,
+                table_name="schedules",
+                columns={"project_id": "TEXT"},
+            )
+            self._ensure_columns(
+                connection,
+                table_name="memory_items",
+                columns={"project_id": "TEXT"},
+            )
             if self._is_empty(connection, "workspace_state"):
                 self._seed(connection)
                 self.record_event(
@@ -365,6 +429,15 @@ class GnosysStore:
         result = connection.execute(f"SELECT COUNT(*) AS count FROM {table_name}").fetchone()
         return bool(result is not None and result["count"] == 0)
 
+    def _ensure_columns(self, connection: sqlite3.Connection, *, table_name: str, columns: dict[str, str]) -> None:
+        existing = {
+            row["name"]
+            for row in connection.execute(f"PRAGMA table_info({table_name})").fetchall()
+        }
+        for column, definition in columns.items():
+            if column not in existing:
+                connection.execute(f"ALTER TABLE {table_name} ADD COLUMN {column} {definition}")
+
     def _seed(self, connection: sqlite3.Connection) -> None:
         workspace_pairs = WORKSPACE_SEED.items()
         connection.executemany(
@@ -375,10 +448,21 @@ class GnosysStore:
         timestamp = utc_now()
         connection.executemany(
             """
-            INSERT OR REPLACE INTO tasks(id, title, summary, status, priority, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT OR REPLACE INTO tasks(id, project_id, title, summary, status, priority, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            [(item["id"], item["title"], item["summary"], item["status"], item["priority"], timestamp) for item in TASK_SEED],
+            [
+                (
+                    item["id"],
+                    item.get("project_id"),
+                    item["title"],
+                    item["summary"],
+                    item["status"],
+                    item["priority"],
+                    timestamp,
+                )
+                for item in TASK_SEED
+            ],
         )
         connection.executemany(
             """
@@ -399,12 +483,13 @@ class GnosysStore:
         )
         connection.executemany(
             """
-            INSERT OR REPLACE INTO skills(id, name, description, scope, version, source_type, status, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT OR REPLACE INTO skills(id, project_id, name, description, scope, version, source_type, status, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 (
                     item["id"],
+                    item.get("project_id"),
                     item["name"],
                     item["description"],
                     item["scope"],
@@ -420,13 +505,14 @@ class GnosysStore:
         connection.executemany(
             """
             INSERT OR REPLACE INTO schedules(
-                id, name, target_type, target_ref, schedule_expression, timezone, enabled, last_run_at, next_run_at, created_at, updated_at
+                id, project_id, name, target_type, target_ref, schedule_expression, timezone, enabled, last_run_at, next_run_at, created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 (
                     item["id"],
+                    item.get("project_id"),
                     item["name"],
                     item["target_type"],
                     item["target_ref"],
@@ -452,9 +538,9 @@ class GnosysStore:
             """
             INSERT OR REPLACE INTO memory_items(
                 id, layer, scope, state, title, summary, content, provenance, source_ref,
-                confidence, freshness, tags, created_at, updated_at, last_accessed_at
+                confidence, freshness, tags, created_at, updated_at, last_accessed_at, project_id
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 (
@@ -473,6 +559,7 @@ class GnosysStore:
                     timestamp,
                     timestamp,
                     None,
+                    item.get("project_id"),
                 )
                 for item in MEMORY_ITEM_SEED
             ],
@@ -490,6 +577,7 @@ class GnosysStore:
         summary: str,
         status: str = "Inbox",
         priority: str = "Medium",
+        project_id: str | None = None,
     ) -> dict[str, Any]:
         timestamp = utc_now()
         task_id = f"task-{uuid4().hex[:12]}"
@@ -497,14 +585,15 @@ class GnosysStore:
         with self.connect() as connection:
             connection.execute(
                 """
-                INSERT INTO tasks(id, title, summary, status, priority, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO tasks(id, project_id, title, summary, status, priority, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
-                (task_id, title, summary, status, priority, timestamp),
+                (task_id, project_id, title, summary, status, priority, timestamp),
             )
             connection.commit()
         return {
             "id": task_id,
+            "project_id": project_id,
             "title": title,
             "summary": summary,
             "status": status,
@@ -519,12 +608,14 @@ class GnosysStore:
         summary: str,
         status: str,
         priority: str,
+        project_id: str | None = None,
     ) -> dict[str, Any]:
         timestamp = utc_now()
         with self.connect() as connection:
             connection.execute(
-                "UPDATE tasks SET title = ?, summary = ?, status = ?, priority = ?, updated_at = ? WHERE id = ?",
+                "UPDATE tasks SET project_id = COALESCE(?, project_id), title = ?, summary = ?, status = ?, priority = ?, updated_at = ? WHERE id = ?",
                 (
+                    project_id,
                     title.strip() or "Untitled task",
                     summary.strip() or title.strip() or "Untitled task",
                     status,
@@ -560,7 +651,7 @@ class GnosysStore:
     def get_task(self, task_id: str) -> dict[str, Any] | None:
         with self.connect() as connection:
             row = connection.execute(
-                "SELECT id, title, summary, status, priority FROM tasks WHERE id = ?",
+                "SELECT id, project_id, title, summary, status, priority FROM tasks WHERE id = ?",
                 (task_id,),
             ).fetchone()
             return dict(row) if row is not None else None
@@ -587,7 +678,7 @@ class GnosysStore:
     def list_tasks(self) -> list[dict[str, Any]]:
         with self.connect() as connection:
             rows = connection.execute(
-                "SELECT id, title, summary, status, priority FROM tasks ORDER BY updated_at DESC, id ASC"
+                "SELECT id, project_id, title, summary, status, priority FROM tasks ORDER BY updated_at DESC, id ASC"
             ).fetchall()
             return [dict(row) for row in rows]
 
@@ -704,14 +795,14 @@ class GnosysStore:
     def list_skills(self) -> list[dict[str, Any]]:
         with self.connect() as connection:
             rows = connection.execute(
-                "SELECT id, name, description, scope, version, source_type, status, created_at, updated_at FROM skills ORDER BY updated_at DESC, id ASC"
+                "SELECT id, project_id, name, description, scope, version, source_type, status, created_at, updated_at FROM skills ORDER BY updated_at DESC, id ASC"
             ).fetchall()
             return [dict(row) for row in rows]
 
     def get_skill(self, skill_id: str) -> dict[str, Any] | None:
         with self.connect() as connection:
             row = connection.execute(
-                "SELECT id, name, description, scope, version, source_type, status, created_at, updated_at FROM skills WHERE id = ?",
+                "SELECT id, project_id, name, description, scope, version, source_type, status, created_at, updated_at FROM skills WHERE id = ?",
                 (skill_id,),
             ).fetchone()
             return dict(row) if row is not None else None
@@ -725,16 +816,17 @@ class GnosysStore:
         version: str = "0.1.0",
         source_type: str = "authored",
         status: str = "draft",
+        project_id: str | None = None,
     ) -> dict[str, Any]:
         timestamp = utc_now()
         skill_id = f"skill-{uuid4().hex[:12]}"
         with self.connect() as connection:
             connection.execute(
                 """
-                INSERT INTO skills(id, name, description, scope, version, source_type, status, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO skills(id, project_id, name, description, scope, version, source_type, status, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (skill_id, name.strip() or "Untitled skill", description.strip() or name.strip() or "Untitled skill", scope, version, source_type, status, timestamp, timestamp),
+                (skill_id, project_id, name.strip() or "Untitled skill", description.strip() or name.strip() or "Untitled skill", scope, version, source_type, status, timestamp, timestamp),
             )
             connection.commit()
         return self.get_skill(skill_id) or {}
@@ -749,16 +841,17 @@ class GnosysStore:
         version: str,
         source_type: str,
         status: str,
+        project_id: str | None = None,
     ) -> dict[str, Any]:
         timestamp = utc_now()
         with self.connect() as connection:
             connection.execute(
                 """
                 UPDATE skills
-                SET name = ?, description = ?, scope = ?, version = ?, source_type = ?, status = ?, updated_at = ?
+                SET project_id = COALESCE(?, project_id), name = ?, description = ?, scope = ?, version = ?, source_type = ?, status = ?, updated_at = ?
                 WHERE id = ?
                 """,
-                (name.strip() or "Untitled skill", description.strip() or name.strip() or "Untitled skill", scope, version, source_type, status, timestamp, skill_id),
+                (project_id, name.strip() or "Untitled skill", description.strip() or name.strip() or "Untitled skill", scope, version, source_type, status, timestamp, skill_id),
             )
             connection.commit()
         skill = self.get_skill(skill_id)
@@ -775,7 +868,7 @@ class GnosysStore:
         with self.connect() as connection:
             rows = connection.execute(
                 """
-                SELECT id, name, target_type, target_ref, schedule_expression, timezone, enabled, last_run_at, next_run_at, created_at, updated_at
+                SELECT id, project_id, name, target_type, target_ref, schedule_expression, timezone, enabled, last_run_at, next_run_at, created_at, updated_at
                 FROM schedules
                 ORDER BY updated_at DESC, id ASC
                 """
@@ -791,7 +884,7 @@ class GnosysStore:
         with self.connect() as connection:
             row = connection.execute(
                 """
-                SELECT id, name, target_type, target_ref, schedule_expression, timezone, enabled, last_run_at, next_run_at, created_at, updated_at
+                SELECT id, project_id, name, target_type, target_ref, schedule_expression, timezone, enabled, last_run_at, next_run_at, created_at, updated_at
                 FROM schedules
                 WHERE id = ?
                 """,
@@ -814,6 +907,7 @@ class GnosysStore:
         enabled: bool = True,
         last_run_at: str | None = None,
         next_run_at: str | None = None,
+        project_id: str | None = None,
     ) -> dict[str, Any]:
         timestamp = utc_now()
         schedule_id = f"schedule-{uuid4().hex[:12]}"
@@ -821,12 +915,13 @@ class GnosysStore:
             connection.execute(
                 """
                 INSERT INTO schedules(
-                    id, name, target_type, target_ref, schedule_expression, timezone, enabled, last_run_at, next_run_at, created_at, updated_at
+                    id, project_id, name, target_type, target_ref, schedule_expression, timezone, enabled, last_run_at, next_run_at, created_at, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     schedule_id,
+                    project_id,
                     name.strip() or "Untitled schedule",
                     target_type,
                     target_ref,
@@ -854,16 +949,18 @@ class GnosysStore:
         enabled: bool,
         last_run_at: str | None = None,
         next_run_at: str | None = None,
+        project_id: str | None = None,
     ) -> dict[str, Any]:
         timestamp = utc_now()
         with self.connect() as connection:
             connection.execute(
                 """
                 UPDATE schedules
-                SET name = ?, target_type = ?, target_ref = ?, schedule_expression = ?, timezone = ?, enabled = ?, last_run_at = ?, next_run_at = ?, updated_at = ?
+                SET project_id = COALESCE(?, project_id), name = ?, target_type = ?, target_ref = ?, schedule_expression = ?, timezone = ?, enabled = ?, last_run_at = ?, next_run_at = ?, updated_at = ?
                 WHERE id = ?
                 """,
                 (
+                    project_id,
                     name.strip() or "Untitled schedule",
                     target_type,
                     target_ref,
@@ -893,10 +990,11 @@ class GnosysStore:
         limit: int = 50,
         layer: str | None = None,
         scope: str | None = None,
+        project_id: str | None = None,
         state: str | None = None,
     ) -> list[dict[str, Any]]:
         query = [
-            "SELECT id, layer, scope, state, title, summary, content, provenance, source_ref, confidence, freshness, tags, created_at, updated_at, last_accessed_at",
+            "SELECT id, layer, scope, project_id, state, title, summary, content, provenance, source_ref, confidence, freshness, tags, created_at, updated_at, last_accessed_at",
             "FROM memory_items",
         ]
         params: list[Any] = []
@@ -907,6 +1005,9 @@ class GnosysStore:
         if scope:
             conditions.append("scope = ?")
             params.append(scope)
+        if project_id:
+            conditions.append("(project_id = ? OR project_id IS NULL)")
+            params.append(project_id)
         if state:
             conditions.append("state = ?")
             params.append(state)
@@ -936,7 +1037,7 @@ class GnosysStore:
         with self.connect() as connection:
             row = connection.execute(
                 """
-                SELECT id, layer, scope, state, title, summary, content, provenance, source_ref,
+                SELECT id, layer, scope, project_id, state, title, summary, content, provenance, source_ref,
                        confidence, freshness, tags, created_at, updated_at, last_accessed_at
                 FROM memory_items
                 WHERE id = ?
@@ -961,9 +1062,9 @@ class GnosysStore:
                 """
                 INSERT OR REPLACE INTO memory_items(
                     id, layer, scope, state, title, summary, content, provenance, source_ref,
-                    confidence, freshness, tags, created_at, updated_at, last_accessed_at
+                    confidence, freshness, tags, created_at, updated_at, last_accessed_at, project_id
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     item["id"],
@@ -981,6 +1082,7 @@ class GnosysStore:
                     created_at,
                     timestamp,
                     last_accessed_at,
+                    item.get("project_id"),
                 ),
             )
             connection.commit()
@@ -1422,6 +1524,230 @@ class GnosysStore:
             row = connection.execute("SELECT COUNT(*) AS count FROM approval_requests").fetchone()
             return int(row["count"] if row is not None else 0)
 
+    def upsert_entity_policy(
+        self,
+        *,
+        entity_type: str,
+        entity_id: str,
+        autonomy_mode: str,
+        kill_switch: bool,
+        approval_bias: str,
+    ) -> dict[str, Any]:
+        timestamp = utc_now()
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO entity_policies(
+                    entity_type, entity_id, autonomy_mode, kill_switch, approval_bias, created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(entity_type, entity_id) DO UPDATE SET
+                    autonomy_mode = excluded.autonomy_mode,
+                    kill_switch = excluded.kill_switch,
+                    approval_bias = excluded.approval_bias,
+                    updated_at = excluded.updated_at
+                """,
+                (entity_type, entity_id, autonomy_mode, int(kill_switch), approval_bias, timestamp, timestamp),
+            )
+            connection.commit()
+        policy = self.get_entity_policy(entity_type, entity_id)
+        if policy is None:
+            raise RuntimeError(f"Unable to persist entity policy {entity_type}:{entity_id}")
+        return policy
+
+    def get_entity_policy(self, entity_type: str, entity_id: str) -> dict[str, Any] | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT entity_type, entity_id, autonomy_mode, kill_switch, approval_bias, created_at, updated_at
+                FROM entity_policies
+                WHERE entity_type = ? AND entity_id = ?
+                """,
+                (entity_type, entity_id),
+            ).fetchone()
+            if row is None:
+                return None
+            data = dict(row)
+            data["kill_switch"] = bool(data["kill_switch"])
+            return data
+
+    def list_entity_policies(self, limit: int = 50) -> list[dict[str, Any]]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT entity_type, entity_id, autonomy_mode, kill_switch, approval_bias, created_at, updated_at
+                FROM entity_policies
+                ORDER BY updated_at DESC, entity_type ASC, entity_id ASC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+            results = []
+            for row in rows:
+                item = dict(row)
+                item["kill_switch"] = bool(item["kill_switch"])
+                results.append(item)
+            return results
+
+    def count_entity_policies(self) -> int:
+        with self.connect() as connection:
+            row = connection.execute("SELECT COUNT(*) AS count FROM entity_policies").fetchone()
+            return int(row["count"] if row is not None else 0)
+
+    def create_schedule_run(
+        self,
+        *,
+        schedule_id: str,
+        schedule_name: str,
+        target_type: str,
+        target_ref: str,
+        requested_by: str,
+        result_summary: str,
+        attempt_number: int = 1,
+        retry_of_run_id: str | None = None,
+        task_run_id: str | None = None,
+        status: str = "running",
+        last_error: str | None = None,
+    ) -> dict[str, Any]:
+        timestamp = utc_now()
+        run_id = f"schedule-run-{uuid4().hex[:12]}"
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO schedule_runs(
+                    id, schedule_id, schedule_name, target_type, target_ref, status, attempt_number,
+                    retry_of_run_id, task_run_id, requested_by, result_summary, last_error,
+                    created_at, updated_at, completed_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    run_id,
+                    schedule_id,
+                    schedule_name,
+                    target_type,
+                    target_ref,
+                    status,
+                    attempt_number,
+                    retry_of_run_id,
+                    task_run_id,
+                    requested_by,
+                    result_summary,
+                    last_error,
+                    timestamp,
+                    timestamp,
+                    None,
+                ),
+            )
+            connection.commit()
+        return self.get_schedule_run(run_id) or {}
+
+    def update_schedule_run(
+        self,
+        run_id: str,
+        *,
+        status: str,
+        result_summary: str | None = None,
+        task_run_id: str | None = None,
+        last_error: str | None = None,
+        completed: bool = False,
+    ) -> dict[str, Any]:
+        timestamp = utc_now()
+        with self.connect() as connection:
+            connection.execute(
+                """
+                UPDATE schedule_runs
+                SET status = ?,
+                    result_summary = COALESCE(?, result_summary),
+                    task_run_id = COALESCE(?, task_run_id),
+                    last_error = COALESCE(?, last_error),
+                    updated_at = ?,
+                    completed_at = ?
+                WHERE id = ?
+                """,
+                (
+                    status,
+                    result_summary,
+                    task_run_id,
+                    last_error,
+                    timestamp,
+                    timestamp if completed else None,
+                    run_id,
+                ),
+            )
+            connection.commit()
+        run = self.get_schedule_run(run_id)
+        if run is None:
+            raise KeyError(run_id)
+        return run
+
+    def get_schedule_run(self, run_id: str) -> dict[str, Any] | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT id, schedule_id, schedule_name, target_type, target_ref, status, attempt_number,
+                       retry_of_run_id, task_run_id, requested_by, result_summary, last_error,
+                       created_at, updated_at, completed_at
+                FROM schedule_runs
+                WHERE id = ?
+                """,
+                (run_id,),
+            ).fetchone()
+            return dict(row) if row is not None else None
+
+    def list_schedule_runs(
+        self,
+        *,
+        limit: int = 50,
+        schedule_id: str | None = None,
+        task_run_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        query = [
+            "SELECT id, schedule_id, schedule_name, target_type, target_ref, status, attempt_number, retry_of_run_id, task_run_id, requested_by, result_summary, last_error, created_at, updated_at, completed_at",
+            "FROM schedule_runs",
+        ]
+        params: list[Any] = []
+        conditions: list[str] = []
+        if schedule_id:
+            conditions.append("schedule_id = ?")
+            params.append(schedule_id)
+        if task_run_id:
+            conditions.append("task_run_id = ?")
+            params.append(task_run_id)
+        if conditions:
+            query.append("WHERE " + " AND ".join(conditions))
+        query.append("ORDER BY created_at DESC, id DESC")
+        query.append("LIMIT ?")
+        params.append(limit)
+        sql = " ".join(query)
+        with self.connect() as connection:
+            rows = connection.execute(sql, params).fetchall()
+            return [dict(row) for row in rows]
+
+    def count_schedule_runs(self) -> int:
+        with self.connect() as connection:
+            row = connection.execute("SELECT COUNT(*) AS count FROM schedule_runs").fetchone()
+            return int(row["count"] if row is not None else 0)
+
+    def list_replay_events(self, *, task_run_id: str, limit: int = 200) -> list[dict[str, Any]]:
+        events = self.list_events(limit=limit)
+        results: list[dict[str, Any]] = []
+        for event in reversed(events):
+            payload = event.get("payload", {})
+            if not isinstance(payload, dict):
+                continue
+            if payload.get("task_run_id") == task_run_id or payload.get("run_id") == task_run_id:
+                results.append(event)
+                continue
+            approval_request = payload.get("approval_request")
+            if isinstance(approval_request, dict) and approval_request.get("task_run_id") == task_run_id:
+                results.append(event)
+                continue
+            nested_payload = approval_request.get("payload") if isinstance(approval_request, dict) else None
+            if isinstance(nested_payload, dict) and nested_payload.get("task_run_id") == task_run_id:
+                results.append(event)
+        return results
+
     def _approval_row(self, row: sqlite3.Row | None) -> dict[str, Any] | None:
         if row is None:
             return None
@@ -1484,6 +1810,8 @@ class GnosysStore:
         memory_items = self.list_memory_items(limit=10)
         task_runs = self.list_task_runs(limit=10)
         agent_runs = self.list_agent_runs(limit=25)
+        schedule_runs = self.list_schedule_runs(limit=10)
+        entity_policies = self.list_entity_policies(limit=10)
         recent_events = self.list_events()
         approvals = self.list_approval_requests(limit=10)
 
@@ -1508,6 +1836,8 @@ class GnosysStore:
             "memory_items": memory_items,
             "task_runs": task_runs,
             "agent_runs": agent_runs,
+            "schedule_runs": schedule_runs,
+            "entity_policies": entity_policies,
             "approval_requests": approvals,
             "recent_events": recent_events,
             "counts": {
@@ -1520,6 +1850,8 @@ class GnosysStore:
                 "memory_items": self.count_memory_items(),
                 "task_runs": self.count_task_runs(),
                 "agent_runs": self.count_agent_runs(),
+                "schedule_runs": self.count_schedule_runs(),
+                "entity_policies": self.count_entity_policies(),
                 "approval_requests": self.count_approval_requests(),
                 "events": self.count_events(),
             },

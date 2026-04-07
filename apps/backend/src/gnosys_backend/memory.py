@@ -39,14 +39,22 @@ class MemoryEngine:
     def __init__(self, store: GnosysStore) -> None:
         self.store = store
 
-    def retrieve(self, *, query: str, role: str, scope: str | None = None, limit: int = 5) -> MemoryRetrievalResult:
+    def retrieve(
+        self,
+        *,
+        query: str,
+        role: str,
+        scope: str | None = None,
+        project_id: str | None = None,
+        limit: int = 5,
+    ) -> MemoryRetrievalResult:
         tokens = tokenize(query)
         normalized_role = role.lower()
         active_bias = ROLE_LAYER_BIAS.get(normalized_role, ROLE_LAYER_BIAS["orchestrator"])
         scope_priority = ROLE_SCOPE_PRIORITY.get(normalized_role, ROLE_SCOPE_PRIORITY["orchestrator"])
-        candidates = self.store.list_memory_items(limit=100, scope=scope)
+        candidates = self.store.list_memory_items(limit=100, scope=scope, project_id=project_id)
 
-        scored = [self._score_candidate(item, tokens, active_bias, scope_priority, scope) for item in candidates]
+        scored = [self._score_candidate(item, tokens, active_bias, scope_priority, scope, project_id) for item in candidates]
         scored.sort(key=lambda candidate: candidate["score"], reverse=True)
         selected = scored[:limit]
 
@@ -58,6 +66,10 @@ class MemoryEngine:
             {
                 "stage": "scope",
                 "detail": f"Scope filter: {scope or 'all'}",
+            },
+            {
+                "stage": "project",
+                "detail": f"Project filter: {project_id or 'all'}",
             },
             {
                 "stage": "role-bias",
@@ -121,6 +133,7 @@ class MemoryEngine:
         freshness: float = 0.7,
         tags: list[str] | None = None,
         state: str = "candidate",
+        project_id: str | None = None,
     ) -> dict[str, Any]:
         item_id = f"memory-item-{utc_now().replace(':', '').replace('-', '').replace('T', '').replace('Z', '')}"
         item = self.store.upsert_memory_item(
@@ -137,6 +150,7 @@ class MemoryEngine:
                 "confidence": confidence,
                 "freshness": freshness,
                 "tags": tags or [],
+                "project_id": project_id,
             }
         )
         self.store.record_event(
@@ -190,6 +204,7 @@ class MemoryEngine:
         active_bias: list[str],
         scope_priority: list[str],
         query_scope: str | None,
+        project_id: str | None,
     ) -> dict[str, Any]:
         text_blob = " ".join([item["title"], item["summary"], item["content"], " ".join(item["tags"]) ]).lower()
         matches = sum(1 for token in tokens if token in text_blob)
@@ -199,15 +214,17 @@ class MemoryEngine:
         state_bonus = {"validated": 0.25, "candidate": 0.08, "archived": -0.4}.get(item["state"], 0.0)
         layer_bonus = 0.12 if item["layer"] in active_bias else 0.0
         scope_bonus = 0.14 if query_scope and item["scope"] == query_scope else 0.0
+        project_bonus = 0.12 if project_id and item.get("project_id") == project_id else 0.0
         scope_priority_bonus = 0.08 if item["scope"] == scope_priority[0] else 0.0
         recency_bonus = 0.05 if item.get("last_accessed_at") else 0.0
-        score = keyword_score + confidence_score + freshness_score + state_bonus + layer_bonus + scope_bonus + scope_priority_bonus + recency_bonus
+        score = keyword_score + confidence_score + freshness_score + state_bonus + layer_bonus + scope_bonus + project_bonus + scope_priority_bonus + recency_bonus
 
         reason_parts = [
             f"{matches} token matches",
             f"layer={item['layer']}",
             f"state={item['state']}",
             f"scope={item['scope']}",
+            f"project={item.get('project_id') or 'none'}",
         ]
 
         return {

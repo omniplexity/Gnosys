@@ -13,6 +13,7 @@ export type AgentStatus = 'Idle' | 'Working' | 'Waiting' | 'Reviewing';
 
 export interface Task {
   id: string;
+  project_id?: string | null;
   title: string;
   summary: string;
   status: TaskStatus;
@@ -38,6 +39,7 @@ export interface Project {
 
 export interface Skill {
   id: string;
+  project_id?: string | null;
   name: string;
   description: string;
   scope: 'workspace' | 'project' | 'session' | 'user';
@@ -50,6 +52,7 @@ export interface Skill {
 
 export interface Schedule {
   id: string;
+  project_id?: string | null;
   name: string;
   target_type: 'task' | 'project' | 'skill' | 'orchestration';
   target_ref: string;
@@ -110,6 +113,7 @@ export interface MemoryItem {
   id: string;
   layer: string;
   scope: 'workspace' | 'project' | 'session' | 'user';
+  project_id?: string | null;
   state: MemoryState;
   title: string;
   summary: string;

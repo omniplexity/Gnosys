@@ -89,6 +89,9 @@ class PolicyDecision:
     reason: str
     mode: str
     action: str
+    policy_scope: str
+    policy_entity_type: str | None
+    policy_entity_id: str | None
 
 
 class PolicyEngine:
@@ -104,6 +107,24 @@ class PolicyEngine:
             "approval_bias": workspace.get("approval_bias", "supervised"),
             "mode_label": workspace.get("mode_label", "Global autonomy and approval policy"),
         }
+
+    def resolve_effective_policy(
+        self,
+        *,
+        entity_type: str | None = None,
+        entity_id: str | None = None,
+        project_id: str | None = None,
+    ) -> dict[str, Any]:
+        workspace = self.snapshot()
+        if entity_type and entity_id:
+            entity_policy = self.store.get_entity_policy(entity_type, entity_id)
+            if entity_policy is not None:
+                return {**workspace, **entity_policy, "policy_scope": "entity", "policy_entity_type": entity_type, "policy_entity_id": entity_id}
+        if project_id:
+            project_policy = self.store.get_entity_policy("project", project_id)
+            if project_policy is not None:
+                return {**workspace, **project_policy, "policy_scope": "project", "policy_entity_type": "project", "policy_entity_id": project_id}
+        return {**workspace, "policy_scope": "workspace", "policy_entity_type": None, "policy_entity_id": None}
 
     def update(self, *, autonomy_mode: str | None = None, kill_switch: bool | None = None, approval_bias: str | None = None) -> dict[str, Any]:
         updates: dict[str, str] = {}
@@ -124,9 +145,12 @@ class PolicyEngine:
         *,
         action: str,
         payload: dict[str, Any] | None = None,
+        entity_type: str | None = None,
+        entity_id: str | None = None,
+        project_id: str | None = None,
         mutating: bool = True,
     ) -> PolicyDecision:
-        snapshot = self.snapshot()
+        snapshot = self.resolve_effective_policy(entity_type=entity_type, entity_id=entity_id, project_id=project_id)
         mode = snapshot["autonomy_mode"]
         kill_switch = bool(snapshot["kill_switch"])
         sensitivity, reason = classify_action(action, payload)
@@ -139,6 +163,9 @@ class PolicyEngine:
                 reason=reason,
                 mode=mode,
                 action=action,
+                policy_scope=snapshot["policy_scope"],
+                policy_entity_type=snapshot["policy_entity_type"],
+                policy_entity_id=snapshot["policy_entity_id"],
             )
 
         if kill_switch:
@@ -149,6 +176,9 @@ class PolicyEngine:
                 reason="The kill switch is enabled.",
                 mode=mode,
                 action=action,
+                policy_scope=snapshot["policy_scope"],
+                policy_entity_type=snapshot["policy_entity_type"],
+                policy_entity_id=snapshot["policy_entity_id"],
             )
 
         if mode == "Full Access":
@@ -159,6 +189,9 @@ class PolicyEngine:
                 reason="Full Access allows automated execution.",
                 mode=mode,
                 action=action,
+                policy_scope=snapshot["policy_scope"],
+                policy_entity_type=snapshot["policy_entity_type"],
+                policy_entity_id=snapshot["policy_entity_id"],
             )
 
         if mode == "Manual":
@@ -169,6 +202,9 @@ class PolicyEngine:
                 reason="Manual mode requires approval for all mutations.",
                 mode=mode,
                 action=action,
+                policy_scope=snapshot["policy_scope"],
+                policy_entity_type=snapshot["policy_entity_type"],
+                policy_entity_id=snapshot["policy_entity_id"],
             )
 
         if mode == "Supervised" and sensitivity in {"high", "critical"}:
@@ -179,6 +215,9 @@ class PolicyEngine:
                 reason=reason,
                 mode=mode,
                 action=action,
+                policy_scope=snapshot["policy_scope"],
+                policy_entity_type=snapshot["policy_entity_type"],
+                policy_entity_id=snapshot["policy_entity_id"],
             )
 
         if mode == "Autonomous" and sensitivity == "critical":
@@ -189,6 +228,9 @@ class PolicyEngine:
                 reason="Critical actions remain gated in autonomous mode.",
                 mode=mode,
                 action=action,
+                policy_scope=snapshot["policy_scope"],
+                policy_entity_type=snapshot["policy_entity_type"],
+                policy_entity_id=snapshot["policy_entity_id"],
             )
 
         return PolicyDecision(
@@ -198,4 +240,7 @@ class PolicyEngine:
             reason=reason,
             mode=mode,
             action=action,
+            policy_scope=snapshot["policy_scope"],
+            policy_entity_type=snapshot["policy_entity_type"],
+            policy_entity_id=snapshot["policy_entity_id"],
         )

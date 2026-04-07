@@ -263,8 +263,10 @@ def test_project_skill_schedule_crud_workflows(tmp_path: Path) -> None:
             "version": "1.0.0",
             "source_type": "authored",
             "status": "draft",
+            "project_id": project["id"],
         },
     ).json()
+    assert skill["project_id"] == project["id"]
     assert client.patch(
         f"/api/skills/{skill['id']}",
         json={
@@ -274,6 +276,7 @@ def test_project_skill_schedule_crud_workflows(tmp_path: Path) -> None:
             "version": "1.0.1",
             "source_type": "learned",
             "status": "active",
+            "project_id": project["id"],
         },
     ).status_code == 200
     assert client.delete(f"/api/skills/{skill['id']}").status_code == 423
@@ -287,8 +290,10 @@ def test_project_skill_schedule_crud_workflows(tmp_path: Path) -> None:
             "schedule_expression": "FREQ=WEEKLY;BYDAY=MO;BYHOUR=9;BYMINUTE=0",
             "timezone": "America/New_York",
             "enabled": True,
+            "project_id": project["id"],
         },
     ).json()
+    assert schedule["project_id"] == project["id"]
     assert client.patch(
         f"/api/schedules/{schedule['id']}",
         json={
@@ -298,6 +303,7 @@ def test_project_skill_schedule_crud_workflows(tmp_path: Path) -> None:
             "schedule_expression": "FREQ=WEEKLY;BYDAY=TU;BYHOUR=10;BYMINUTE=0",
             "timezone": "America/New_York",
             "enabled": False,
+            "project_id": project["id"],
         },
     ).status_code == 423
     assert client.delete(f"/api/schedules/{schedule['id']}").status_code == 423
@@ -315,3 +321,110 @@ def test_agent_crud_workflow(tmp_path: Path) -> None:
         json={"name": "CRUD agent updated", "role": "Lifecycle updated", "status": "Working"},
     ).status_code == 200
     assert client.delete(f"/api/agents/{agent['id']}").status_code == 423
+
+
+def test_project_scoped_memory_retrieval_uses_project_bias(tmp_path: Path) -> None:
+    client = build_client(tmp_path)
+
+    client.post(
+        "/api/memory/items",
+        json={
+            "title": "Workspace note",
+            "summary": "Generic workspace memory",
+            "content": "This item should not outrank the project scoped item for the same query.",
+            "provenance": "test",
+            "source_ref": "workspace-note",
+            "layer": "Semantic",
+            "scope": "workspace",
+            "confidence": 0.8,
+            "freshness": 0.8,
+            "tags": ["workspace"],
+        },
+    )
+    client.post(
+        "/api/memory/items",
+        json={
+            "title": "Project note",
+            "summary": "Scoped project memory",
+            "content": "This item belongs to project-002 and should surface for that project query.",
+            "provenance": "test",
+            "source_ref": "project-note",
+            "layer": "Semantic",
+            "scope": "project",
+            "project_id": "project-002",
+            "confidence": 0.9,
+            "freshness": 0.95,
+            "tags": ["project"],
+        },
+    )
+
+    response = client.get(
+        "/api/memory/retrieve",
+        params={"query": "project note", "role": "planner", "scope": "project", "project_id": "project-002"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["items"][0]["title"] == "Project note"
+    assert payload["trace"][2]["stage"] == "project"
+
+
+def test_entity_policy_overrides_workspace_policy(tmp_path: Path) -> None:
+    client = build_client(tmp_path)
+    client.patch("/api/policy", json={"autonomy_mode": "Manual", "kill_switch": False})
+
+    policy_response = client.patch(
+        "/api/policies/entities/project/project-001",
+        json={"autonomy_mode": "Full Access", "kill_switch": False, "approval_bias": "autonomous"},
+    )
+    assert policy_response.status_code == 200
+    assert policy_response.json()["autonomy_mode"] == "Full Access"
+
+    allowed = client.post(
+        "/api/tasks",
+        json={
+            "title": "Project scoped task",
+            "summary": "Allowed because the project policy is Full Access",
+            "status": "Inbox",
+            "priority": "High",
+            "project_id": "project-001",
+        },
+    )
+    assert allowed.status_code == 201
+
+    blocked = client.post(
+        "/api/tasks",
+        json={
+            "title": "Workspace gated task",
+            "summary": "Blocked because it has no entity override",
+            "status": "Inbox",
+            "priority": "High",
+            "project_id": "project-002",
+        },
+    )
+    assert blocked.status_code == 423
+    assert blocked.json()["detail"]["decision"]["policy_scope"] == "workspace"
+
+
+def test_schedule_run_retry_and_replay(tmp_path: Path) -> None:
+    client = build_client(tmp_path)
+    client.patch("/api/policy", json={"autonomy_mode": "Full Access", "kill_switch": False})
+
+    run_response = client.post("/api/schedules/schedule-001/run", params={"requested_by": "scheduler"})
+    assert run_response.status_code == 201
+    first_run = run_response.json()
+    assert first_run["status"] == "completed"
+    assert first_run["task_run_id"] is not None
+
+    retry_response = client.post(f"/api/schedule-runs/{first_run['id']}/retry", params={"requested_by": "scheduler"})
+    assert retry_response.status_code == 201
+    retry_run = retry_response.json()
+    assert retry_run["attempt_number"] == first_run["attempt_number"] + 1
+    assert retry_run["retry_of_run_id"] == first_run["id"]
+
+    replay_response = client.get(f"/api/diagnostics/replay/{first_run['task_run_id']}")
+    assert replay_response.status_code == 200
+    replay = replay_response.json()
+    assert replay["task_run"]["id"] == first_run["task_run_id"]
+    assert len(replay["schedule_runs"]) >= 1
+    assert len(replay["events"]) >= 1

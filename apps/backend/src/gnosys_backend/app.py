@@ -14,6 +14,8 @@ from .models import (
     AgentRunRecord,
     ApprovalRequestRecord,
     ApprovalResolveRequest,
+    EntityPolicyRecord,
+    EntityPolicyUpdateRequest,
     EventCreateRequest,
     EventRecord,
     HealthResponse,
@@ -26,6 +28,7 @@ from .models import (
     OrchestrationLaunchResponse,
     OrchestrationRunListResponse,
     OrchestrationRunResponse,
+    ReplayResponse,
     PolicyDecisionRecord,
     PolicyRecord,
     PolicyUpdateRequest,
@@ -34,6 +37,8 @@ from .models import (
     ProjectUpdateRequest,
     ScheduleCreateRequest,
     ScheduleRecord,
+    ScheduleRunListResponse,
+    ScheduleRunRecord,
     ScheduleUpdateRequest,
     SkillCreateRequest,
     SkillRecord,
@@ -90,9 +95,17 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
         subject_type: str,
         subject_ref: str,
         payload: dict[str, object],
+        project_id: str | None = None,
         requested_by: str = "ui",
     ) -> None:
-        decision = policy_engine.evaluate(action=action, payload=payload, mutating=True)
+        decision = policy_engine.evaluate(
+            action=action,
+            payload=payload,
+            entity_type=subject_type,
+            entity_id=subject_ref,
+            project_id=project_id,
+            mutating=True,
+        )
         if decision.allowed:
             return
         approval = active_store.create_approval_request(
@@ -142,6 +155,128 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
                 return nested
         return {}
 
+    def _payload_project_id(payload: dict[str, object]) -> str | None:
+        project_id = payload.get("project_id")
+        return project_id if isinstance(project_id, str) and project_id else None
+
+    def _schedule_execution_objective(schedule: dict[str, object]) -> tuple[str, str | None, str | None]:
+        target_type = str(schedule.get("target_type", ""))
+        target_ref = str(schedule.get("target_ref", ""))
+
+        if target_type == "task":
+            task = active_store.get_task(target_ref)
+            if task is not None:
+                return (
+                    f"Scheduled task execution: {task['title']}",
+                    task["title"],
+                    task["summary"],
+                )
+        if target_type == "project":
+            project = active_store.get_project(target_ref)
+            if project is not None:
+                return (
+                    f"Scheduled project execution: {project['name']}",
+                    project["name"],
+                    project["summary"],
+                )
+        if target_type == "skill":
+            skill = active_store.get_skill(target_ref)
+            if skill is not None:
+                return (
+                    f"Scheduled skill execution: {skill['name']}",
+                    skill["name"],
+                    skill["description"],
+                )
+        if target_type == "orchestration":
+            return (
+                f"Scheduled orchestration: {target_ref or schedule.get('name', 'scheduled run')}",
+                str(schedule.get("name", "Scheduled orchestration")),
+                f"Recurring execution for {target_ref or schedule.get('name', 'scheduled run')}",
+            )
+        return (
+            f"Scheduled execution: {schedule.get('name', 'scheduled run')}",
+            str(schedule.get("name", "Scheduled run")),
+            str(schedule.get("name", "Scheduled run")),
+        )
+
+    def _dispatch_schedule_run(
+        *,
+        schedule: dict[str, object],
+        requested_by: str,
+        retry_of_run_id: str | None = None,
+        attempt_number: int = 1,
+    ) -> dict[str, object]:
+        run = active_store.create_schedule_run(
+            schedule_id=str(schedule["id"]),
+            schedule_name=str(schedule["name"]),
+            target_type=str(schedule["target_type"]),
+            target_ref=str(schedule["target_ref"]),
+            requested_by=requested_by,
+            result_summary=f"Queued schedule {schedule['name']} for execution.",
+            retry_of_run_id=retry_of_run_id,
+            attempt_number=attempt_number,
+            status="running",
+        )
+        active_store.record_event(
+            event_type="schedule.run_requested",
+            source="scheduler",
+            payload={
+                "schedule_run_id": run["id"],
+                "schedule_id": schedule["id"],
+                "requested_by": requested_by,
+                "attempt_number": attempt_number,
+            },
+        )
+
+        try:
+            objective, task_title, task_summary = _schedule_execution_objective(schedule)
+            launch = orchestration_engine.launch(
+                objective=objective,
+                task_title=task_title,
+                task_summary=task_summary,
+                requested_by=requested_by,
+                mode="Autonomous",
+                priority="High",
+                task_id=str(schedule.get("target_ref")) if str(schedule.get("target_type")) == "task" else None,
+                bypass_policy=True,
+            )
+            updated = active_store.update_schedule_run(
+                run["id"],
+                status="completed",
+                result_summary=launch.summary,
+                task_run_id=launch.task_run["id"],
+                completed=True,
+            )
+            active_store.record_event(
+                event_type="schedule.run_completed",
+                source="scheduler",
+                payload={
+                    "schedule_run_id": run["id"],
+                    "schedule_id": schedule["id"],
+                    "task_run_id": launch.task_run["id"],
+                    "requested_by": requested_by,
+                },
+            )
+            return updated
+        except Exception as exc:  # pragma: no cover - defensive guard for live execution
+            failed = active_store.update_schedule_run(
+                run["id"],
+                status="failed",
+                last_error=str(exc),
+                completed=True,
+            )
+            active_store.record_event(
+                event_type="schedule.run_failed",
+                source="scheduler",
+                payload={
+                    "schedule_run_id": run["id"],
+                    "schedule_id": schedule["id"],
+                    "requested_by": requested_by,
+                    "error": str(exc),
+                },
+            )
+            return failed
+
     def _execute_approved_request(approval: dict[str, object]) -> dict[str, object]:
         action = str(approval.get("action", ""))
         subject_ref = str(approval.get("subject_ref", ""))
@@ -154,6 +289,7 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
                 summary=str(payload.get("summary", "")),
                 status=str(payload.get("status", "Inbox")),
                 priority=str(payload.get("priority", "Medium")),
+                project_id=_payload_project_id(payload),
             )
             active_store.record_event(
                 event_type="task.created",
@@ -169,6 +305,7 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
                 summary=str(payload.get("summary", "")),
                 status=str(payload.get("status", "Inbox")),
                 priority=str(payload.get("priority", "Medium")),
+                project_id=_payload_project_id(payload),
             )
             active_store.record_event(
                 event_type="task.updated",
@@ -268,6 +405,7 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
                 version=str(payload.get("version", "0.1.0")),
                 source_type=str(payload.get("source_type", "authored")),
                 status=str(payload.get("status", "draft")),
+                project_id=_payload_project_id(payload),
             )
             active_store.record_event(
                 event_type="skill.created",
@@ -285,6 +423,7 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
                 version=str(payload.get("version", "0.1.0")),
                 source_type=str(payload.get("source_type", "authored")),
                 status=str(payload.get("status", "draft")),
+                project_id=_payload_project_id(payload),
             )
             active_store.record_event(
                 event_type="skill.updated",
@@ -312,6 +451,7 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
                 enabled=bool(payload.get("enabled", True)),
                 last_run_at=payload.get("last_run_at"),
                 next_run_at=payload.get("next_run_at"),
+                project_id=_payload_project_id(payload),
             )
             active_store.record_event(
                 event_type="schedule.created",
@@ -331,6 +471,7 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
                 enabled=bool(payload.get("enabled", True)),
                 last_run_at=payload.get("last_run_at"),
                 next_run_at=payload.get("next_run_at"),
+                project_id=_payload_project_id(payload),
             )
             active_store.record_event(
                 event_type="schedule.updated",
@@ -348,6 +489,13 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
             )
             return {"schedule_id": subject_ref}
 
+        if action == "schedule.run":
+            schedule = active_store.get_schedule(subject_ref)
+            if schedule is None:
+                raise HTTPException(status_code=404, detail="Schedule not found")
+            run = _dispatch_schedule_run(schedule=schedule, requested_by=requested_by)
+            return {"schedule_run": run, "schedule_id": subject_ref}
+
         if action == "memory.ingest":
             item = memory_engine.ingest(
                 title=str(payload.get("title", "Untitled memory")),
@@ -361,6 +509,7 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
                 freshness=float(payload.get("freshness", 0.7)),
                 tags=list(payload.get("tags", [])) if isinstance(payload.get("tags", []), list) else [],
                 state=str(payload.get("state", "candidate")),
+                project_id=_payload_project_id(payload),
             )
             return {"memory_item": item}
 
@@ -437,6 +586,44 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
         )
         return ApprovalRequestRecord(**updated)
 
+    @app.get("/api/policies/entities", response_model=list[EntityPolicyRecord])
+    def list_entity_policies(limit: int = 25) -> list[EntityPolicyRecord]:
+        if limit < 1 or limit > 100:
+            raise HTTPException(status_code=400, detail="limit must be between 1 and 100")
+        return [EntityPolicyRecord(**policy) for policy in active_store.list_entity_policies(limit=limit)]
+
+    @app.get("/api/policies/entities/{entity_type}/{entity_id}", response_model=EntityPolicyRecord)
+    def get_entity_policy(entity_type: str, entity_id: str) -> EntityPolicyRecord:
+        policy = active_store.get_entity_policy(entity_type, entity_id)
+        if policy is None:
+            raise HTTPException(status_code=404, detail="Entity policy not found")
+        return EntityPolicyRecord(**policy)
+
+    @app.patch("/api/policies/entities/{entity_type}/{entity_id}", response_model=EntityPolicyRecord)
+    def update_entity_policy(entity_type: str, entity_id: str, payload: EntityPolicyUpdateRequest) -> EntityPolicyRecord:
+        current = active_store.get_entity_policy(entity_type, entity_id) or {
+            "entity_type": entity_type,
+            "entity_id": entity_id,
+            "autonomy_mode": policy_engine.snapshot()["autonomy_mode"],
+            "kill_switch": False,
+            "approval_bias": policy_engine.snapshot()["approval_bias"],
+            "created_at": None,
+            "updated_at": None,
+        }
+        policy = active_store.upsert_entity_policy(
+            entity_type=entity_type,
+            entity_id=entity_id,
+            autonomy_mode=payload.autonomy_mode or current["autonomy_mode"],
+            kill_switch=current["kill_switch"] if payload.kill_switch is None else payload.kill_switch,
+            approval_bias=payload.approval_bias or current["approval_bias"],
+        )
+        active_store.record_event(
+            event_type="policy.entity.updated",
+            source="ui",
+            payload={"entity_type": entity_type, "entity_id": entity_id, "policy": policy},
+        )
+        return EntityPolicyRecord(**policy)
+
     @app.get("/workspace", response_model=WorkspaceSummary)
     @app.get("/api/workspace", response_model=WorkspaceSummary)
     def workspace() -> WorkspaceSummary:
@@ -457,12 +644,14 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
             subject_type="task",
             subject_ref=payload.title,
             payload=payload.model_dump(),
+            project_id=payload.project_id,
         )
         task = active_store.create_task(
             title=payload.title,
             summary=payload.summary,
             status=payload.status,
             priority=payload.priority,
+            project_id=payload.project_id,
         )
         active_store.record_event(
             event_type="task.created",
@@ -480,11 +669,15 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
 
     @app.patch("/api/tasks/{task_id}", response_model=TaskRecord)
     def update_task(task_id: str, payload: TaskUpdateRequest) -> TaskRecord:
+        existing = active_store.get_task(task_id)
+        if existing is None:
+            raise HTTPException(status_code=404, detail="Task not found")
         _gate_mutation(
             action="task.update",
             subject_type="task",
             subject_ref=task_id,
             payload=payload.model_dump(),
+            project_id=payload.project_id or existing.get("project_id"),
         )
         task = active_store.update_task(
             task_id,
@@ -492,6 +685,7 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
             summary=payload.summary,
             status=payload.status,
             priority=payload.priority,
+            project_id=payload.project_id,
         )
         active_store.record_event(
             event_type="task.updated",
@@ -502,11 +696,15 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
 
     @app.delete("/api/tasks/{task_id}", status_code=204)
     def delete_task(task_id: str) -> None:
+        existing = active_store.get_task(task_id)
+        if existing is None:
+            raise HTTPException(status_code=404, detail="Task not found")
         _gate_mutation(
             action="task.delete",
             subject_type="task",
             subject_ref=task_id,
             payload={"task_id": task_id},
+            project_id=existing.get("project_id"),
         )
         active_store.delete_task(task_id)
         active_store.record_event(
@@ -607,6 +805,7 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
             subject_type="project",
             subject_ref=project_id,
             payload=payload.model_dump(),
+            project_id=project_id,
         )
         project = active_store.update_project(
             project_id,
@@ -629,6 +828,7 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
             subject_type="project",
             subject_ref=project_id,
             payload={"project_id": project_id},
+            project_id=project_id,
         )
         active_store.delete_project(project_id)
         active_store.record_event(
@@ -648,6 +848,7 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
             subject_type="skill",
             subject_ref=payload.name,
             payload=payload.model_dump(),
+            project_id=payload.project_id,
         )
         skill = active_store.create_skill(
             name=payload.name,
@@ -656,6 +857,7 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
             version=payload.version,
             source_type=payload.source_type,
             status=payload.status,
+            project_id=payload.project_id,
         )
         active_store.record_event(
             event_type="skill.created",
@@ -673,11 +875,15 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
 
     @app.patch("/api/skills/{skill_id}", response_model=SkillRecord)
     def update_skill(skill_id: str, payload: SkillUpdateRequest) -> SkillRecord:
+        existing = active_store.get_skill(skill_id)
+        if existing is None:
+            raise HTTPException(status_code=404, detail="Skill not found")
         _gate_mutation(
             action="skill.update",
             subject_type="skill",
             subject_ref=skill_id,
             payload=payload.model_dump(),
+            project_id=payload.project_id or existing.get("project_id"),
         )
         skill = active_store.update_skill(
             skill_id,
@@ -687,6 +893,7 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
             version=payload.version,
             source_type=payload.source_type,
             status=payload.status,
+            project_id=payload.project_id,
         )
         active_store.record_event(
             event_type="skill.updated",
@@ -697,11 +904,15 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
 
     @app.delete("/api/skills/{skill_id}", status_code=204)
     def delete_skill(skill_id: str) -> None:
+        existing = active_store.get_skill(skill_id)
+        if existing is None:
+            raise HTTPException(status_code=404, detail="Skill not found")
         _gate_mutation(
             action="skill.delete",
             subject_type="skill",
             subject_ref=skill_id,
             payload={"skill_id": skill_id},
+            project_id=existing.get("project_id"),
         )
         active_store.delete_skill(skill_id)
         active_store.record_event(
@@ -721,6 +932,7 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
             subject_type="schedule",
             subject_ref=payload.name,
             payload=payload.model_dump(),
+            project_id=payload.project_id,
         )
         schedule = active_store.create_schedule(
             name=payload.name,
@@ -731,6 +943,7 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
             enabled=payload.enabled,
             last_run_at=payload.last_run_at,
             next_run_at=payload.next_run_at,
+            project_id=payload.project_id,
         )
         active_store.record_event(
             event_type="schedule.created",
@@ -748,11 +961,15 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
 
     @app.patch("/api/schedules/{schedule_id}", response_model=ScheduleRecord)
     def update_schedule(schedule_id: str, payload: ScheduleUpdateRequest) -> ScheduleRecord:
+        existing = active_store.get_schedule(schedule_id)
+        if existing is None:
+            raise HTTPException(status_code=404, detail="Schedule not found")
         _gate_mutation(
             action="schedule.update",
             subject_type="schedule",
             subject_ref=schedule_id,
             payload=payload.model_dump(),
+            project_id=payload.project_id or existing.get("project_id"),
         )
         schedule = active_store.update_schedule(
             schedule_id,
@@ -764,6 +981,7 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
             enabled=payload.enabled,
             last_run_at=payload.last_run_at,
             next_run_at=payload.next_run_at,
+            project_id=payload.project_id,
         )
         active_store.record_event(
             event_type="schedule.updated",
@@ -774,11 +992,15 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
 
     @app.delete("/api/schedules/{schedule_id}", status_code=204)
     def delete_schedule(schedule_id: str) -> None:
+        existing = active_store.get_schedule(schedule_id)
+        if existing is None:
+            raise HTTPException(status_code=404, detail="Schedule not found")
         _gate_mutation(
             action="schedule.delete",
             subject_type="schedule",
             subject_ref=schedule_id,
             payload={"schedule_id": schedule_id},
+            project_id=existing.get("project_id"),
         )
         active_store.delete_schedule(schedule_id)
         active_store.record_event(
@@ -792,10 +1014,10 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
         return [MemoryLayerRecord(**layer) for layer in active_store.list_memory_layers()]
 
     @app.get("/api/memory/items", response_model=list[MemoryItemRecord])
-    def memory_items(limit: int = 25) -> list[MemoryItemRecord]:
+    def memory_items(limit: int = 25, project_id: str | None = None) -> list[MemoryItemRecord]:
         if limit < 1 or limit > 100:
             raise HTTPException(status_code=400, detail="limit must be between 1 and 100")
-        return [MemoryItemRecord(**item) for item in active_store.list_memory_items(limit=limit)]
+        return [MemoryItemRecord(**item) for item in active_store.list_memory_items(limit=limit, project_id=project_id)]
 
     @app.post("/api/memory/items", response_model=MemoryItemRecord, status_code=201)
     def ingest_memory(payload: MemoryIngestRequest) -> MemoryItemRecord:
@@ -804,6 +1026,7 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
             subject_type="memory_item",
             subject_ref=payload.title,
             payload=payload.model_dump(),
+            project_id=payload.project_id,
         )
         item = memory_engine.ingest(
             title=payload.title,
@@ -813,6 +1036,7 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
             source_ref=payload.source_ref,
             layer=payload.layer,
             scope=payload.scope,
+            project_id=payload.project_id,
             confidence=payload.confidence,
             freshness=payload.freshness,
             tags=payload.tags,
@@ -829,17 +1053,77 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
         query: str,
         role: str = "orchestrator",
         scope: str | None = None,
+        project_id: str | None = None,
         limit: int = 5,
     ) -> MemoryRetrievalResponse:
         if limit < 1 or limit > 20:
             raise HTTPException(status_code=400, detail="limit must be between 1 and 20")
-        result = memory_engine.retrieve(query=query, role=role, scope=scope, limit=limit)
+        result = memory_engine.retrieve(query=query, role=role, scope=scope, project_id=project_id, limit=limit)
         return MemoryRetrievalResponse(
             query=result.query,
             scope=result.scope,
             role=result.role,
             items=[MemoryItemRecord(**item) for item in result.items],
             trace=result.trace,
+        )
+
+    @app.get("/api/schedule-runs", response_model=ScheduleRunListResponse)
+    def schedule_runs(limit: int = 25) -> ScheduleRunListResponse:
+        if limit < 1 or limit > 100:
+            raise HTTPException(status_code=400, detail="limit must be between 1 and 100")
+        return ScheduleRunListResponse(
+            schedule_runs=[ScheduleRunRecord(**run) for run in active_store.list_schedule_runs(limit=limit)]
+        )
+
+    @app.post("/api/schedules/{schedule_id}/run", response_model=ScheduleRunRecord, status_code=201)
+    def run_schedule(schedule_id: str, requested_by: str = "ui") -> ScheduleRunRecord:
+        schedule = active_store.get_schedule(schedule_id)
+        if schedule is None:
+            raise HTTPException(status_code=404, detail="Schedule not found")
+        _gate_mutation(
+            action="schedule.run",
+            subject_type="schedule",
+            subject_ref=schedule_id,
+            payload={
+                "schedule_id": schedule_id,
+                "schedule_name": schedule["name"],
+                "target_type": schedule["target_type"],
+                "target_ref": schedule["target_ref"],
+                "requested_by": requested_by,
+            },
+            project_id=schedule.get("project_id"),
+        )
+        return ScheduleRunRecord(**_dispatch_schedule_run(schedule=schedule, requested_by=requested_by))
+
+    @app.post("/api/schedule-runs/{run_id}/retry", response_model=ScheduleRunRecord, status_code=201)
+    def retry_schedule_run(run_id: str, requested_by: str = "ui") -> ScheduleRunRecord:
+        original = active_store.get_schedule_run(run_id)
+        if original is None:
+            raise HTTPException(status_code=404, detail="Schedule run not found")
+        schedule = active_store.get_schedule(original["schedule_id"])
+        if schedule is None:
+            raise HTTPException(status_code=404, detail="Schedule not found")
+        _gate_mutation(
+            action="schedule.run",
+            subject_type="schedule",
+            subject_ref=schedule["id"],
+            payload={
+                "schedule_id": schedule["id"],
+                "schedule_name": schedule["name"],
+                "target_type": schedule["target_type"],
+                "target_ref": schedule["target_ref"],
+                "requested_by": requested_by,
+                "retry_of_run_id": run_id,
+            },
+            project_id=schedule.get("project_id"),
+        )
+        return ScheduleRunRecord(
+            **_dispatch_schedule_run(
+                schedule=schedule,
+                requested_by=requested_by,
+                retry_of_run_id=run_id,
+                attempt_number=int(original["attempt_number"]) + 1,
+            )
         )
 
     @app.get("/api/orchestration/runs", response_model=OrchestrationRunListResponse)
@@ -857,6 +1141,19 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
             task=TaskRecord(**result["task"]),
             task_run=TaskRunRecord(**result["task_run"]),
             agent_runs=[AgentRunRecord(**run) for run in result["agent_runs"]],
+        )
+
+    @app.get("/api/diagnostics/replay/{task_run_id}", response_model=ReplayResponse)
+    def replay_run(task_run_id: str) -> ReplayResponse:
+        result = orchestration_engine.get_run(task_run_id)
+        return ReplayResponse(
+            task_run=TaskRunRecord(**result["task_run"]),
+            agent_runs=[AgentRunRecord(**run) for run in result["agent_runs"]],
+            events=[EventRecord(**event) for event in active_store.list_replay_events(task_run_id=task_run_id)],
+            schedule_runs=[
+                ScheduleRunRecord(**run)
+                for run in active_store.list_schedule_runs(limit=100, task_run_id=task_run_id)
+            ],
         )
 
     @app.post("/api/orchestration/launch", response_model=OrchestrationLaunchResponse, status_code=201)
