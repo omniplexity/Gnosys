@@ -112,6 +112,8 @@ SCHEDULE_SEED = [
         "schedule_expression": "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR;BYHOUR=9;BYMINUTE=0",
         "timezone": "America/New_York",
         "enabled": 1,
+        "approval_policy": "inherit",
+        "failure_policy": "retry_once",
         "last_run_at": None,
         "next_run_at": None,
     }
@@ -242,6 +244,8 @@ CREATE TABLE IF NOT EXISTS schedules (
     schedule_expression TEXT NOT NULL,
     timezone TEXT NOT NULL,
     enabled INTEGER NOT NULL,
+    approval_policy TEXT NOT NULL,
+    failure_policy TEXT NOT NULL,
     last_run_at TEXT,
     next_run_at TEXT,
     created_at TEXT NOT NULL,
@@ -337,6 +341,7 @@ CREATE TABLE IF NOT EXISTS approval_requests (
 CREATE TABLE IF NOT EXISTS entity_policies (
     entity_type TEXT NOT NULL,
     entity_id TEXT NOT NULL,
+    project_id TEXT,
     autonomy_mode TEXT NOT NULL,
     kill_switch INTEGER NOT NULL,
     approval_bias TEXT NOT NULL,
@@ -406,12 +411,24 @@ class GnosysStore:
             self._ensure_columns(
                 connection,
                 table_name="schedules",
-                columns={"project_id": "TEXT"},
+                columns={
+                    "project_id": "TEXT",
+                    "approval_policy": "TEXT DEFAULT 'inherit'",
+                    "failure_policy": "TEXT DEFAULT 'retry_once'",
+                },
             )
             self._ensure_columns(
                 connection,
                 table_name="memory_items",
                 columns={"project_id": "TEXT"},
+            )
+            self._ensure_columns(
+                connection,
+                table_name="entity_policies",
+                columns={"project_id": "TEXT"},
+            )
+            connection.execute(
+                "UPDATE schedules SET approval_policy = COALESCE(approval_policy, 'inherit'), failure_policy = COALESCE(failure_policy, 'retry_once')"
             )
             if self._is_empty(connection, "workspace_state"):
                 self._seed(connection)
@@ -424,6 +441,27 @@ class GnosysStore:
                         "mode": WORKSPACE_SEED["mode"],
                     },
                 )
+            if self._is_empty(connection, "entity_policies"):
+                timestamp = utc_now()
+                connection.execute(
+                    """
+                    INSERT OR REPLACE INTO entity_policies(
+                        entity_type, entity_id, project_id, autonomy_mode, kill_switch, approval_bias, created_at, updated_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        "project",
+                        "project-001",
+                        "project-001",
+                        WORKSPACE_SEED["autonomy_mode"],
+                        int(False),
+                        WORKSPACE_SEED["approval_bias"],
+                        timestamp,
+                        timestamp,
+                    ),
+                )
+                connection.commit()
 
     def _is_empty(self, connection: sqlite3.Connection, table_name: str) -> bool:
         result = connection.execute(f"SELECT COUNT(*) AS count FROM {table_name}").fetchone()
@@ -505,9 +543,9 @@ class GnosysStore:
         connection.executemany(
             """
             INSERT OR REPLACE INTO schedules(
-                id, project_id, name, target_type, target_ref, schedule_expression, timezone, enabled, last_run_at, next_run_at, created_at, updated_at
+                id, project_id, name, target_type, target_ref, schedule_expression, timezone, enabled, approval_policy, failure_policy, last_run_at, next_run_at, created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 (
@@ -519,6 +557,8 @@ class GnosysStore:
                     item["schedule_expression"],
                     item["timezone"],
                     item["enabled"],
+                    item["approval_policy"],
+                    item["failure_policy"],
                     item["last_run_at"],
                     item["next_run_at"],
                     timestamp,
@@ -562,6 +602,26 @@ class GnosysStore:
                     item.get("project_id"),
                 )
                 for item in MEMORY_ITEM_SEED
+            ],
+        )
+        connection.executemany(
+            """
+            INSERT OR REPLACE INTO entity_policies(
+                entity_type, entity_id, project_id, autonomy_mode, kill_switch, approval_bias, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    "project",
+                    "project-001",
+                    "project-001",
+                    WORKSPACE_SEED["autonomy_mode"],
+                    int(False),
+                    WORKSPACE_SEED["approval_bias"],
+                    timestamp,
+                    timestamp,
+                )
             ],
         )
 
@@ -868,7 +928,7 @@ class GnosysStore:
         with self.connect() as connection:
             rows = connection.execute(
                 """
-                SELECT id, project_id, name, target_type, target_ref, schedule_expression, timezone, enabled, last_run_at, next_run_at, created_at, updated_at
+                SELECT id, project_id, name, target_type, target_ref, schedule_expression, timezone, enabled, approval_policy, failure_policy, last_run_at, next_run_at, created_at, updated_at
                 FROM schedules
                 ORDER BY updated_at DESC, id ASC
                 """
@@ -884,7 +944,7 @@ class GnosysStore:
         with self.connect() as connection:
             row = connection.execute(
                 """
-                SELECT id, project_id, name, target_type, target_ref, schedule_expression, timezone, enabled, last_run_at, next_run_at, created_at, updated_at
+                SELECT id, project_id, name, target_type, target_ref, schedule_expression, timezone, enabled, approval_policy, failure_policy, last_run_at, next_run_at, created_at, updated_at
                 FROM schedules
                 WHERE id = ?
                 """,
@@ -905,6 +965,8 @@ class GnosysStore:
         schedule_expression: str,
         timezone: str,
         enabled: bool = True,
+        approval_policy: str = "inherit",
+        failure_policy: str = "retry_once",
         last_run_at: str | None = None,
         next_run_at: str | None = None,
         project_id: str | None = None,
@@ -915,9 +977,9 @@ class GnosysStore:
             connection.execute(
                 """
                 INSERT INTO schedules(
-                    id, project_id, name, target_type, target_ref, schedule_expression, timezone, enabled, last_run_at, next_run_at, created_at, updated_at
+                    id, project_id, name, target_type, target_ref, schedule_expression, timezone, enabled, approval_policy, failure_policy, last_run_at, next_run_at, created_at, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     schedule_id,
@@ -928,6 +990,8 @@ class GnosysStore:
                     schedule_expression,
                     timezone,
                     int(enabled),
+                    approval_policy,
+                    failure_policy,
                     last_run_at,
                     next_run_at,
                     timestamp,
@@ -947,6 +1011,8 @@ class GnosysStore:
         schedule_expression: str,
         timezone: str,
         enabled: bool,
+        approval_policy: str = "inherit",
+        failure_policy: str = "retry_once",
         last_run_at: str | None = None,
         next_run_at: str | None = None,
         project_id: str | None = None,
@@ -956,7 +1022,7 @@ class GnosysStore:
             connection.execute(
                 """
                 UPDATE schedules
-                SET project_id = COALESCE(?, project_id), name = ?, target_type = ?, target_ref = ?, schedule_expression = ?, timezone = ?, enabled = ?, last_run_at = ?, next_run_at = ?, updated_at = ?
+                SET project_id = COALESCE(?, project_id), name = ?, target_type = ?, target_ref = ?, schedule_expression = ?, timezone = ?, enabled = ?, approval_policy = ?, failure_policy = ?, last_run_at = ?, next_run_at = ?, updated_at = ?
                 WHERE id = ?
                 """,
                 (
@@ -967,6 +1033,8 @@ class GnosysStore:
                     schedule_expression,
                     timezone,
                     int(enabled),
+                    approval_policy,
+                    failure_policy,
                     last_run_at,
                     next_run_at,
                     timestamp,
@@ -1529,6 +1597,7 @@ class GnosysStore:
         *,
         entity_type: str,
         entity_id: str,
+        project_id: str | None = None,
         autonomy_mode: str,
         kill_switch: bool,
         approval_bias: str,
@@ -1538,16 +1607,17 @@ class GnosysStore:
             connection.execute(
                 """
                 INSERT INTO entity_policies(
-                    entity_type, entity_id, autonomy_mode, kill_switch, approval_bias, created_at, updated_at
+                    entity_type, entity_id, project_id, autonomy_mode, kill_switch, approval_bias, created_at, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(entity_type, entity_id) DO UPDATE SET
+                    project_id = excluded.project_id,
                     autonomy_mode = excluded.autonomy_mode,
                     kill_switch = excluded.kill_switch,
                     approval_bias = excluded.approval_bias,
                     updated_at = excluded.updated_at
                 """,
-                (entity_type, entity_id, autonomy_mode, int(kill_switch), approval_bias, timestamp, timestamp),
+                (entity_type, entity_id, project_id, autonomy_mode, int(kill_switch), approval_bias, timestamp, timestamp),
             )
             connection.commit()
         policy = self.get_entity_policy(entity_type, entity_id)
@@ -1559,7 +1629,7 @@ class GnosysStore:
         with self.connect() as connection:
             row = connection.execute(
                 """
-                SELECT entity_type, entity_id, autonomy_mode, kill_switch, approval_bias, created_at, updated_at
+                SELECT entity_type, entity_id, project_id, autonomy_mode, kill_switch, approval_bias, created_at, updated_at
                 FROM entity_policies
                 WHERE entity_type = ? AND entity_id = ?
                 """,
@@ -1575,7 +1645,7 @@ class GnosysStore:
         with self.connect() as connection:
             rows = connection.execute(
                 """
-                SELECT entity_type, entity_id, autonomy_mode, kill_switch, approval_bias, created_at, updated_at
+                SELECT entity_type, entity_id, project_id, autonomy_mode, kill_switch, approval_bias, created_at, updated_at
                 FROM entity_policies
                 ORDER BY updated_at DESC, entity_type ASC, entity_id ASC
                 LIMIT ?

@@ -426,5 +426,88 @@ def test_schedule_run_retry_and_replay(tmp_path: Path) -> None:
     assert replay_response.status_code == 200
     replay = replay_response.json()
     assert replay["task_run"]["id"] == first_run["task_run_id"]
+    assert len(replay["timeline"]) >= len(replay["events"])
     assert len(replay["schedule_runs"]) >= 1
     assert len(replay["events"]) >= 1
+
+
+def test_schedule_approval_policy_requires_review(tmp_path: Path) -> None:
+    client = build_client(tmp_path)
+
+    schedule = client.post(
+        "/api/schedules",
+        json={
+            "name": "Approval-gated schedule",
+            "target_type": "skill",
+            "target_ref": "skill-001",
+            "schedule_expression": "FREQ=WEEKLY;BYDAY=MO;BYHOUR=9;BYMINUTE=0",
+            "timezone": "America/New_York",
+            "enabled": True,
+            "approval_policy": "require_approval",
+            "failure_policy": "fail_fast",
+        },
+    ).json()
+
+    run_response = client.post(f"/api/schedules/{schedule['id']}/run", params={"requested_by": "scheduler"})
+    assert run_response.status_code == 423
+    approval = run_response.json()["detail"]["approval_request"]
+
+    resolve_response = client.post(
+        f"/api/approvals/{approval['id']}/resolve",
+        json={"status": "approved", "resolved_by": "tester"},
+    )
+    assert resolve_response.status_code == 200
+
+    schedule_runs = client.get("/api/schedule-runs").json()["schedule_runs"]
+    assert any(run["schedule_id"] == schedule["id"] for run in schedule_runs)
+
+
+def test_memory_review_promotion_workflow(tmp_path: Path) -> None:
+    client = build_client(tmp_path)
+
+    review_response = client.get("/api/memory/review")
+    assert review_response.status_code == 200
+    review = review_response.json()
+    assert review["candidate_count"] >= 1
+    candidate = review["items"][0]
+
+    promote_response = client.post(f"/api/memory/items/{candidate['id']}/promote")
+    assert promote_response.status_code == 200
+    assert promote_response.json()["state"] == "validated"
+
+
+def test_replay_includes_timeline_and_comparison(tmp_path: Path) -> None:
+    client = build_client(tmp_path)
+
+    first = client.post(
+        "/api/orchestration/launch",
+        json={
+            "objective": "Repeatable task for replay comparison",
+            "task_title": "Replay task",
+            "task_summary": "Replay task summary",
+            "task_id": "task-001",
+            "requested_by": "desktop",
+            "mode": "Supervised",
+            "priority": "High",
+        },
+    )
+    assert first.status_code == 201
+
+    second = client.post(
+        "/api/orchestration/launch",
+        json={
+            "objective": "Repeatable task for replay comparison",
+            "task_title": "Replay task",
+            "task_summary": "Replay task summary updated",
+            "task_id": "task-001",
+            "requested_by": "desktop",
+            "mode": "Supervised",
+            "priority": "High",
+        },
+    )
+    assert second.status_code == 201
+
+    task_run_id = second.json()["task_run"]["id"]
+    replay = client.get(f"/api/diagnostics/replay/{task_run_id}").json()
+    assert replay["comparison"]["previous_task_run_id"] is not None
+    assert len(replay["timeline"]) >= 1

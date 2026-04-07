@@ -60,6 +60,20 @@ type WorkspaceSnapshot = {
     updated_at: string;
     completed_at: string | null;
   }>;
+  timeline: Array<{
+    kind: string;
+    label: string;
+    detail: string;
+    created_at: string;
+    source_id: string | null;
+  }>;
+  comparison: {
+    previous_task_run_id: string | null;
+    status_changed: boolean;
+    summary_changed: boolean;
+    step_count_delta: number;
+    approval_required_changed: boolean;
+  } | null;
   approval_requests: Array<{
     id: string;
     action: string;
@@ -78,6 +92,7 @@ type WorkspaceSnapshot = {
   entity_policies: Array<{
     entity_type: string;
     entity_id: string;
+    project_id: string | null;
     autonomy_mode: string;
     kill_switch: boolean;
     approval_bias: string;
@@ -159,7 +174,14 @@ type ReplayResponse = {
     payload: Record<string, unknown>;
     created_at: string;
   }>;
+  timeline: WorkspaceSnapshot['timeline'];
+  comparison: WorkspaceSnapshot['comparison'];
   schedule_runs: WorkspaceSnapshot['schedule_runs'];
+};
+
+type MemoryReviewResponse = {
+  candidate_count: number;
+  items: MemoryItem[];
 };
 
 const fallbackSnapshot: WorkspaceSnapshot = {
@@ -184,6 +206,8 @@ const fallbackSnapshot: WorkspaceSnapshot = {
   task_runs: [],
   agent_runs: [],
   schedule_runs: [],
+  timeline: [],
+  comparison: null,
   approval_requests: [],
   entity_policies: [],
   recent_events: [],
@@ -236,7 +260,7 @@ async function retrieveMemory(query: string, role: string, scope: string | null,
   return (await response.json()) as MemoryRetrievalResult;
 }
 
-async function launchOrchestration(objective: string, mode: string): Promise<LaunchResponse> {
+async function launchOrchestration(objective: string, mode: string, taskId?: string): Promise<LaunchResponse> {
   const response = await fetch('/api/orchestration/launch', {
     method: 'POST',
     headers: {
@@ -246,6 +270,7 @@ async function launchOrchestration(objective: string, mode: string): Promise<Lau
       objective,
       task_title: objective.slice(0, 48),
       task_summary: objective,
+      task_id: taskId,
       requested_by: 'desktop',
       mode,
       priority: 'High'
@@ -342,6 +367,34 @@ async function loadReplay(taskRunId: string): Promise<ReplayResponse> {
   return (await response.json()) as ReplayResponse;
 }
 
+async function loadMemoryReview(): Promise<MemoryReviewResponse> {
+  const response = await fetch('/api/memory/review');
+  if (!response.ok) {
+    throw new Error(`Failed to load memory review: ${response.status}`);
+  }
+  return (await response.json()) as MemoryReviewResponse;
+}
+
+async function promoteMemoryItem(itemId: string): Promise<MemoryItem> {
+  const response = await fetch(`/api/memory/items/${itemId}/promote`, {
+    method: 'POST'
+  });
+  if (!response.ok) {
+    throw new Error(await readErrorDetail(response, `Failed to promote memory item: ${response.status}`));
+  }
+  return (await response.json()) as MemoryItem;
+}
+
+async function archiveMemoryItem(itemId: string): Promise<MemoryItem> {
+  const response = await fetch(`/api/memory/items/${itemId}/archive`, {
+    method: 'POST'
+  });
+  if (!response.ok) {
+    throw new Error(await readErrorDetail(response, `Failed to archive memory item: ${response.status}`));
+  }
+  return (await response.json()) as MemoryItem;
+}
+
 function buildRunTree(agentRuns: AgentRun[]): AgentRun[] {
   return agentRuns.slice().sort((left, right) => {
     if (left.recursion_depth !== right.recursion_depth) {
@@ -414,6 +467,8 @@ function normalizeCrudDraft(kind: CrudKind, draft: CrudDraft): Record<string, un
         schedule_expression: String(draft.schedule_expression ?? ''),
         timezone: String(draft.timezone ?? 'America/New_York'),
         enabled: Boolean(draft.enabled),
+        approval_policy: String(draft.approval_policy ?? 'inherit'),
+        failure_policy: String(draft.failure_policy ?? 'retry_once'),
         last_run_at: draft.last_run_at ? String(draft.last_run_at) : null,
         next_run_at: draft.next_run_at ? String(draft.next_run_at) : null,
         project_id: draft.project_id ? String(draft.project_id) : null
@@ -471,6 +526,9 @@ export default function App() {
   const [retrieval, setRetrieval] = useState<MemoryRetrievalResult | null>(null);
   const [memoryError, setMemoryError] = useState<string | null>(null);
   const [memoryState, setMemoryState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [memoryReview, setMemoryReview] = useState<MemoryReviewResponse | null>(null);
+  const [memoryReviewState, setMemoryReviewState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [memoryReviewError, setMemoryReviewError] = useState<string | null>(null);
   const [launchObjective, setLaunchObjective] = useState('Implement phase 3 orchestration runtime for Gnosys');
   const [launchMode, setLaunchMode] = useState('Supervised');
   const [launchState, setLaunchState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
@@ -515,11 +573,24 @@ export default function App() {
     }
   }
 
+  async function refreshMemoryReview() {
+    setMemoryReviewState('loading');
+    setMemoryReviewError(null);
+    try {
+      const review = await loadMemoryReview();
+      setMemoryReview(review);
+      setMemoryReviewState('ready');
+    } catch (error) {
+      setMemoryReviewError(error instanceof Error ? error.message : 'Failed to load memory review');
+      setMemoryReviewState('error');
+    }
+  }
+
   async function runLaunch(objective = launchObjective, mode = launchMode) {
     setLaunchState('loading');
     setLaunchError(null);
     try {
-      const result = await launchOrchestration(objective, mode);
+      const result = await launchOrchestration(objective, mode, selectedTask.id);
       setLaunchResponse(result);
       await refreshSnapshot();
       setLaunchState('ready');
@@ -620,6 +691,32 @@ export default function App() {
     } catch (error) {
       setReplayError(error instanceof Error ? error.message : 'Failed to load replay');
       setReplayState('error');
+    }
+  }
+
+  async function promoteReviewItem(itemId: string) {
+    try {
+      await promoteMemoryItem(itemId);
+      await refreshSnapshot();
+      await refreshMemoryReview();
+      await runMemorySearch(memoryQuery, memoryRole, memoryScope, memoryProjectId);
+      setActiveTab('Logs');
+    } catch (error) {
+      setMemoryReviewError(error instanceof Error ? error.message : 'Failed to promote memory item');
+      setMemoryReviewState('error');
+    }
+  }
+
+  async function archiveReviewItem(itemId: string) {
+    try {
+      await archiveMemoryItem(itemId);
+      await refreshSnapshot();
+      await refreshMemoryReview();
+      await runMemorySearch(memoryQuery, memoryRole, memoryScope, memoryProjectId);
+      setActiveTab('Logs');
+    } catch (error) {
+      setMemoryReviewError(error instanceof Error ? error.message : 'Failed to archive memory item');
+      setMemoryReviewState('error');
     }
   }
 
@@ -726,6 +823,7 @@ export default function App() {
 
     void run();
     void runMemorySearch('persistence event log', 'orchestrator', 'workspace', memoryProjectId);
+    void refreshMemoryReview();
 
     return () => {
       cancelled = true;
@@ -1102,6 +1200,7 @@ export default function App() {
                 </p>
                 <div className="run-node-meta">
                   <span>{policy.updated_at}</span>
+                  <span>{policy.project_id ?? 'workspace'}</span>
                   <span>
                     <button
                       className="tab"
@@ -1223,6 +1322,8 @@ export default function App() {
                   <span>{schedule.target_ref}</span>
                   <span>{schedule.timezone}</span>
                   <span>{schedule.project_id ?? 'workspace'}</span>
+                  <span>{schedule.approval_policy}</span>
+                  <span>{schedule.failure_policy}</span>
                 </div>
                 <div className="crud-actions">
                   <button className="primary-action" onClick={() => void executeSchedule(schedule.id)}>
@@ -1471,6 +1572,22 @@ export default function App() {
                       />
                     </label>
                     <label>
+                      Approval policy
+                      <select value={String(crudDraft.approval_policy ?? 'inherit')} onChange={(event) => setCrudDraft((prev) => ({ ...prev, approval_policy: event.target.value }))}>
+                        <option value="inherit">inherit</option>
+                        <option value="require_approval">require_approval</option>
+                        <option value="autonomous">autonomous</option>
+                      </select>
+                    </label>
+                    <label>
+                      Failure policy
+                      <select value={String(crudDraft.failure_policy ?? 'retry_once')} onChange={(event) => setCrudDraft((prev) => ({ ...prev, failure_policy: event.target.value }))}>
+                        <option value="retry_once">retry_once</option>
+                        <option value="fail_fast">fail_fast</option>
+                        <option value="retry_twice">retry_twice</option>
+                      </select>
+                    </label>
+                    <label>
                       Project
                       <select value={String(crudDraft.project_id ?? '')} onChange={(event) => setCrudDraft((prev) => ({ ...prev, project_id: event.target.value }))}>
                         <option value="">Workspace</option>
@@ -1578,6 +1695,47 @@ export default function App() {
         </section>
 
         <section className="panel event-panel">
+          <div className="panel-title">Memory review</div>
+          <div className="event-controls">
+            <button className="primary-action" onClick={() => void refreshMemoryReview()}>
+              Refresh review queue
+            </button>
+            <button className="tab" onClick={() => void refreshSnapshot()}>
+              Refresh workspace
+            </button>
+          </div>
+          <p className="event-hint">
+            Candidate memories can be reviewed before promotion. {memoryReviewState === 'ready' ? `${memoryReview?.candidate_count ?? 0} candidates available.` : `State: ${memoryReviewState}.`}
+          </p>
+          {memoryReviewError && <p className="error-banner">{memoryReviewError}</p>}
+          <div className="stack compact">
+            {memoryReview?.items.map((item) => (
+              <article key={item.id} className="memory-card">
+                <div className="memory-card-top">
+                  <strong>{item.title}</strong>
+                  <span>{item.layer} · {item.state}</span>
+                </div>
+                <p>{item.summary}</p>
+                <div className="memory-meta">
+                  <span>{item.project_id ?? 'workspace'}</span>
+                  <span>{item.confidence.toFixed(2)}</span>
+                  <span>{item.freshness.toFixed(2)}</span>
+                </div>
+                <div className="crud-actions">
+                  <button className="primary-action" onClick={() => void promoteReviewItem(item.id)}>
+                    Promote
+                  </button>
+                  <button className="tab" onClick={() => void archiveReviewItem(item.id)}>
+                    Archive
+                  </button>
+                </div>
+              </article>
+            ))}
+            {memoryReview?.items.length === 0 && memoryReviewState === 'ready' && <p>No candidate memories are waiting for review.</p>}
+          </div>
+        </section>
+
+        <section className="panel event-panel">
           <div className="panel-title">Write to event log</div>
           <div className="event-controls">
             <input value={eventDraft} onChange={(event) => setEventDraft(event.target.value)} aria-label="Event type" />
@@ -1652,16 +1810,45 @@ export default function App() {
                 ))}
               </div>
               <aside className="trace-panel">
-                <div className="panel-title">Replay events</div>
+                <div className="panel-title">Replay timeline</div>
                 <div className="stack compact">
-                  {replay.events.map((event) => (
-                    <div key={event.id} className="trace-step">
-                      <strong>{event.type}</strong>
-                      <span>{event.created_at}</span>
+                  {replay.timeline.map((entry) => (
+                    <div key={`${entry.kind}:${entry.source_id ?? entry.created_at}`} className="trace-step">
+                      <strong>{entry.kind}</strong>
+                      <span>{entry.label}</span>
+                      <span>{entry.detail}</span>
+                      <span>{entry.created_at}</span>
                     </div>
                   ))}
-                  {replay.events.length === 0 && <p>No replay events were found for this run.</p>}
+                  {replay.timeline.length === 0 && <p>No replay timeline entries were found for this run.</p>}
                 </div>
+                <div className="panel-title" style={{ marginTop: '1rem' }}>Run comparison</div>
+                {replay.comparison ? (
+                  <div className="stack compact">
+                    <div className="trace-step">
+                      <strong>Previous</strong>
+                      <span>{replay.comparison.previous_task_run_id ?? 'none'}</span>
+                    </div>
+                    <div className="trace-step">
+                      <strong>Status</strong>
+                      <span>{replay.comparison.status_changed ? 'changed' : 'unchanged'}</span>
+                    </div>
+                    <div className="trace-step">
+                      <strong>Summary</strong>
+                      <span>{replay.comparison.summary_changed ? 'changed' : 'unchanged'}</span>
+                    </div>
+                    <div className="trace-step">
+                      <strong>Steps</strong>
+                      <span>{replay.comparison.step_count_delta >= 0 ? '+' : ''}{replay.comparison.step_count_delta}</span>
+                    </div>
+                    <div className="trace-step">
+                      <strong>Approval</strong>
+                      <span>{replay.comparison.approval_required_changed ? 'changed' : 'unchanged'}</span>
+                    </div>
+                  </div>
+                ) : (
+                  <p>No comparison data available.</p>
+                )}
               </aside>
             </div>
           )}

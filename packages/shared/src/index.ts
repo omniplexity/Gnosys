@@ -59,6 +59,8 @@ export interface Schedule {
   schedule_expression: string;
   timezone: string;
   enabled: boolean;
+  approval_policy: 'inherit' | 'require_approval' | 'autonomous';
+  failure_policy: 'retry_once' | 'fail_fast' | 'retry_twice';
   last_run_at: string | null;
   next_run_at: string | null;
   created_at: string;
@@ -252,12 +254,15 @@ export const seedSkills: Skill[] = [
 export const seedSchedules: Schedule[] = [
   {
     id: 'schedule-001',
+    project_id: 'project-001',
     name: 'Daily integrity check',
     target_type: 'skill',
     target_ref: 'skill-001',
     schedule_expression: 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR;BYHOUR=9;BYMINUTE=0',
     timezone: 'America/New_York',
     enabled: true,
+    approval_policy: 'inherit',
+    failure_policy: 'retry_once',
     last_run_at: null,
     next_run_at: null,
     created_at: '2026-04-06T00:00:00Z',

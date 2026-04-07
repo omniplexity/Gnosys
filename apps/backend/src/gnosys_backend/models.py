@@ -148,6 +148,8 @@ class ScheduleListItem(BaseModel):
     schedule_expression: str
     timezone: str
     enabled: bool
+    approval_policy: str
+    failure_policy: str
     last_run_at: str | None = None
     next_run_at: str | None = None
     created_at: str
@@ -220,6 +222,8 @@ class ScheduleRecord(BaseModel):
     schedule_expression: str
     timezone: str
     enabled: bool
+    approval_policy: str
+    failure_policy: str
     last_run_at: str | None = None
     next_run_at: str | None = None
     created_at: str
@@ -236,6 +240,7 @@ class PolicyRecord(BaseModel):
 class EntityPolicyRecord(BaseModel):
     entity_type: str
     entity_id: str
+    project_id: str | None = None
     autonomy_mode: str
     kill_switch: bool
     approval_bias: str
@@ -295,6 +300,8 @@ class ScheduleCreateRequest(BaseModel):
     schedule_expression: str = Field(min_length=1)
     timezone: str = Field(default="America/New_York")
     enabled: bool = Field(default=True)
+    approval_policy: str = Field(default="inherit")
+    failure_policy: str = Field(default="retry_once")
     project_id: str | None = None
     last_run_at: str | None = None
     next_run_at: str | None = None
@@ -307,6 +314,8 @@ class ScheduleUpdateRequest(BaseModel):
     schedule_expression: str = Field(min_length=1)
     timezone: str = Field(default="America/New_York")
     enabled: bool = Field(default=True)
+    approval_policy: str = Field(default="inherit")
+    failure_policy: str = Field(default="retry_once")
     project_id: str | None = None
     last_run_at: str | None = None
     next_run_at: str | None = None
@@ -388,10 +397,16 @@ class MemoryConsolidationResponse(BaseModel):
     archived: int
 
 
+class MemoryReviewResponse(BaseModel):
+    candidate_count: int
+    items: list[MemoryItemRecord]
+
+
 class OrchestrationLaunchRequest(BaseModel):
     objective: str = Field(min_length=1)
     task_title: str | None = None
     task_summary: str | None = None
+    task_id: str | None = None
     requested_by: str = Field(default="user")
     mode: str = Field(default="Supervised")
     priority: str = Field(default="High")
@@ -442,7 +457,25 @@ class ReplayResponse(BaseModel):
     task_run: TaskRunRecord
     agent_runs: list[AgentRunRecord]
     events: list[EventRecord]
+    timeline: list[ReplayTimelineRecord]
+    comparison: ReplayComparisonRecord | None = None
     schedule_runs: list[ScheduleRunRecord]
+
+
+class ReplayTimelineRecord(BaseModel):
+    kind: str
+    label: str
+    detail: str
+    created_at: str
+    source_id: str | None = None
+
+
+class ReplayComparisonRecord(BaseModel):
+    previous_task_run_id: str | None = None
+    status_changed: bool
+    summary_changed: bool
+    step_count_delta: int
+    approval_required_changed: bool
 
 
 class WorkspaceSnapshotResponse(BaseModel):
