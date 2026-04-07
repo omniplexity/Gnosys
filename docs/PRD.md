@@ -4,6 +4,14 @@
 
 Gnosys is a desktop-native, chat-centered agent workspace designed to solve a core weakness of current LLM systems: poor continuity over time. It combines memory, hierarchical multi-agent execution, task and project management, procedural learning, scheduled workflows, and inspectable execution inside a desktop application.
 
+## 1.1 Current implementation status
+
+As of 2026-04-06, the repository contains a working implementation of the product core.
+
+- implemented: desktop shell, backend runtime, persistence, memory retrieval, orchestration, CRUD, approvals, replay, and memory review
+- in progress: schedule automation maturity, memory governance depth, skill lifecycle workflows, and richer diagnostics
+- planned: advanced memory intelligence, learned skills, evaluation harnesses, and deeper automation
+
 ## 2. Product Thesis
 
 An LLM cannot consistently thrive if it cannot remember properly, retrieve context precisely, adapt to the user and workspace, and accumulate procedural competence over time. Gnosys addresses that gap by making memory, delegation, and observable execution first-class systems.

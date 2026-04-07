@@ -2,20 +2,32 @@
 
 ## Overview
 
-Gnosys is now a fresh scaffold for a desktop console, backend runtime, and shared domain package.
+Gnosys is an operational-core desktop agent platform with implemented persistence, memory, orchestration, policy, CRUD, and diagnostics layers. The remaining work is about hardening, deepening automation, and improving intelligence rather than creating the initial skeleton.
 
-## Getting Started
+## Canonical docs
 
-- [README.md](../README.md) - repository overview
+- [README.md](../README.md) - repository overview and quick start
+- [IMPLEMENTATION-STATUS.md](./IMPLEMENTATION-STATUS.md) - current implementation stage and gaps
+- [PRD.md](./PRD.md) - product goals and requirements
+- [ARCHITECTURE.md](./ARCHITECTURE.md) - subsystem architecture and implementation mapping
+- [ROADMAP.md](./ROADMAP.md) - completed phases and next build layers
+- [GNOSYS_AUDIT_REPORT.md](./GNOSYS_AUDIT_REPORT.md) - repository audit and gap review
 - [REPOSITORY-OVERVIEW.md](./REPOSITORY-OVERVIEW.md) - codebase map
-- [PRD.md](./PRD.md) - product direction
-- [ARCHITECTURE.md](./ARCHITECTURE.md) - system architecture
-- [ROADMAP.md](./ROADMAP.md) - implementation roadmap
-- [GNOSYS_AUDIT_REPORT.md](./GNOSYS_AUDIT_REPORT.md) - scaffold audit
+- [PROJECT.md](./PROJECT.md) - project summary and status
 
-## Workspace Structure
+## Supporting docs
 
 - [docs/README.md](./README.md)
-- [apps/desktop/](../apps/desktop/)
-- [apps/backend/](../apps/backend/)
-- [packages/shared/](../packages/shared/)
+- [CONTRIBUTING.md](../CONTRIBUTING.md)
+- [RELEASE.md](../RELEASE.md)
+- [CHANGELOG.md](../CHANGELOG.md)
+
+## Workspace structure
+
+- [apps/desktop/](../apps/desktop/) - desktop UI
+- [apps/backend/](../apps/backend/) - backend runtime
+- [packages/shared/](../packages/shared/) - shared types and seed data
+
+## Current stage in one line
+
+The foundation is built, the control plane is working, and the next work is to mature automation, governance, diagnostics, and learning systems.

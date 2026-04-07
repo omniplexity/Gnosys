@@ -1,24 +1,23 @@
 # Gnosys Documentation
 
-This repository now contains the scaffold for the next Gnosys build.
+This folder contains the canonical docs for the current Gnosys implementation.
 
-## Current layout
+## What is documented here
 
-- `apps/desktop/` - desktop console shell
-- `apps/backend/` - Python API and runtime scaffold
-- `packages/shared/` - shared domain types and seed data
-- `docs/` - architecture, roadmap, and project notes
+- the product requirements and current implementation status
+- the technical architecture and subsystem map
+- the active roadmap and next build layers
+- the repository layout and audit notes
 
-## Key docs
+## Start here
 
 - [INDEX.md](./INDEX.md)
+- [IMPLEMENTATION-STATUS.md](./IMPLEMENTATION-STATUS.md)
 - [PRD.md](./PRD.md)
 - [ARCHITECTURE.md](./ARCHITECTURE.md)
 - [ROADMAP.md](./ROADMAP.md)
-- [REPOSITORY-OVERVIEW.md](./REPOSITORY-OVERVIEW.md)
 - [GNOSYS_AUDIT_REPORT.md](./GNOSYS_AUDIT_REPORT.md)
 
-## Status
+## Working description
 
-- The repository has been reinitialized as a real project scaffold.
-- The old plugin-only implementation is no longer present on `main`.
+The repository is now an operational desktop agent platform, not a documentation-only archive and not a blank scaffold.

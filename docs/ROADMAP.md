@@ -2,74 +2,123 @@
 
 ## Purpose
 
-This roadmap tracks the build-out of the new Gnosys scaffold.
+This roadmap tracks the transition from the operational core to a more mature autonomous desktop platform.
 
-## Phase 0 - Foundation
+## Completed layers
 
-- workspace root tooling
-- desktop shell scaffold
-- backend scaffold
-- shared domain package
-- documentation alignment
+- repository and workspace scaffold
+- desktop shell and shared package setup
+- SQLite persistence and event log
+- memory retrieval and consolidation
+- orchestration and worker spawning
+- tasks, projects, agents, skills, and schedules CRUD
+- autonomy and approval controls
+- project-scoped policy routing
+- schedule execution and retry flows
+- replay diagnostics and memory review workflows
 
-Exit criteria:
+## Current stage
 
-- repository installs cleanly
-- desktop app boots
-- backend health endpoint responds
-- shared package compiles
+Gnosys is now past the scaffolding phase and into the operational core stage.
 
-## Phase 1 - Local persistence and event log
+- the product already works end-to-end for core workflows
+- the missing pieces are depth, hardening, and automation maturity
+- the remaining layers should refine behavior rather than define the product from scratch
 
-- SQLite-backed workspace state
-- append-only event log
-- backend API reads and writes
-- desktop refreshes from persisted state
+## Next roadmap layers
 
-Exit criteria:
+### Layer 1 - Schedule automation maturity
 
-- workspace data survives restart
-- events can be appended and re-read
-- the desktop reflects backend-backed state
-
-## Phase 2 - Memory engine
-
-- active, episodic, semantic, and procedural layers
-- scoped retrieval and explanation trace
-- candidate and validated memory states
-- consolidation and deduplication foundations
+- always-on schedule runner
+- recurring execution lifecycle
+- retries, backoff, and failure notifications
+- schedule history and execution visibility
+- approval-aware scheduled launches
 
 Exit criteria:
 
-- memory can be stored, queried, and inspected
-- retrieval behavior differs by scope and role
+- schedules can run without manual triggering
+- failures are visible and actionable
+- scheduled tasks are observable in the same run history model as interactive work
 
-## Phase 3 - Orchestration and agents
+### Layer 2 - Memory governance
 
-- persistent orchestrator and specialist runtime
-- bounded worker spawning with recursion and child-count limits
-- task decomposition, reporting, and run summaries
-- approval gates for sensitive objectives
-- inspectable task-run and agent-run trees
-
-Exit criteria:
-
-- tasks can move through agent-driven execution
-- child agents are bounded, inspectable, and logged
-
-## Phase 4 - CRUD surfaces
-
-- task editing, project management, agent administration, skill management, and schedule control
-- list/create/update/delete flows for the core operational entities
-- inline desktop forms backed by the same SQLite store
-- event logging for entity lifecycle changes
+- explicit candidate review rules
+- contradiction detection and resolution
+- pinning and forgetting controls
+- promotion thresholds and validation scoring
+- memory regression checks
 
 Exit criteria:
 
-- core entities can be created, edited, and removed through the UI
-- entity state remains consistent with the backend store
-- the CRUD workspace is the final major foundation layer before product specialization
+- durable memory promotion is explainable and repeatable
+- stale or conflicting memories can be handled intentionally
+- memory behavior can be tested
+
+### Layer 3 - Skill lifecycle
+
+- authored skill editor improvements
+- learned skill drafts
+- skill testing pipeline
+- promotion and rollback
+- project-scoped skill routing
+
+Exit criteria:
+
+- skills can move through a visible lifecycle
+- failed skill experiments do not contaminate the stable skill set
+
+### Layer 4 - Diagnostics and replay
+
+- richer run timelines
+- output diffing across runs
+- agent-by-agent replay views
+- search and filtering over historical runs
+- metrics around latency, failures, and cost
+
+Exit criteria:
+
+- users can inspect how a run unfolded without opening raw logs only
+- comparisons across runs are actionable
+
+### Layer 5 - Policy UX
+
+- project policy inheritance editor
+- explicit risk labels for actions
+- better approval reasons and remediation notes
+- clearer autonomy mode state in the desktop UI
+
+Exit criteria:
+
+- policy behavior is understandable without reading backend code
+- users can tell why an action was gated or allowed
+
+### Layer 6 - Evaluation and intelligence
+
+- formal memory retrieval benchmarks
+- delegation quality benchmarks
+- procedural learning evals
+- skill promotion tests
+- memory and agent regression suites
+
+Exit criteria:
+
+- changes to the system can be measured against a repeatable baseline
+- product improvements can be validated instead of inferred
+
+### Layer 7 - Advanced automation
+
+- browser automation
+- desktop action automation
+- deeper recursive planning modes
+- branch comparison and arbitration among worker outputs
+- learned workflow extraction
+
+Exit criteria:
+
+- the platform can support more autonomous operational work without losing inspectability
 
 ## Notes
 
-- The roadmap should be updated whenever the scaffold meaningfully changes.
+- The roadmap should be kept aligned with the implementation status document.
+- If a layer becomes partially implemented, mark it there first and update this roadmap second.

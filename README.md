@@ -1,26 +1,71 @@
-# Gnosys Archive
+# Gnosys
 
-This branch now contains the documentation archive only. The deprecated OpenClaw plugin/backend implementation has been removed from `main`.
+Gnosys is a desktop-native, chat-first agent IDE and operating console focused on durable memory, bounded multi-agent execution, inspectable automation, and local-first persistence.
 
-## What remains
+The repository currently contains a working product scaffold with implemented foundation layers:
 
-- `CONTRIBUTING.md`
-- `RELEASE.md`
-- `CHANGELOG.md`
-- `docs/`
+- desktop console shell
+- FastAPI backend runtime
+- SQLite persistence and event log
+- memory retrieval and consolidation
+- orchestration and worker spawning
+- tasks, projects, agents, skills, and schedules CRUD
+- autonomy and approval controls
+- diagnostics replay and memory review workflows
 
-## Documentation map
+## Current stage
+
+The project is past the initial scaffold phase and is now in the operational core stage.
+
+- implemented: core workspace, persistence, memory, orchestration, policy controls, CRUD, and diagnostics
+- in progress: schedule automation, memory governance, skill lifecycle, and richer replay analysis
+- planned: advanced memory intelligence, learned skills, formal evaluation, and deeper tool execution
+
+## Running locally
+
+From the repository root:
+
+- `npm install`
+- `npm run dev`
+- `npm run check`
+- `npm run build`
+- `npm run test:backend`
+
+`npm run dev` starts the desktop app and backend together.
+
+## Repository layout
+
+- `apps/desktop/` - React desktop shell and console UI
+- `apps/backend/` - FastAPI backend, persistence, policy, memory, and orchestration
+- `packages/shared/` - shared domain types and seed data
+- `docs/` - product, architecture, roadmap, and status documentation
+
+## Documentation
 
 - [docs/INDEX.md](docs/INDEX.md)
-- [docs/README.md](docs/README.md)
-- [docs/PROJECT.md](docs/PROJECT.md)
+- [docs/IMPLEMENTATION-STATUS.md](docs/IMPLEMENTATION-STATUS.md)
 - [docs/PRD.md](docs/PRD.md)
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- [docs/REPOSITORY-OVERVIEW.md](docs/REPOSITORY-OVERVIEW.md)
 - [docs/ROADMAP.md](docs/ROADMAP.md)
 - [docs/GNOSYS_AUDIT_REPORT.md](docs/GNOSYS_AUDIT_REPORT.md)
+- [docs/REPOSITORY-OVERVIEW.md](docs/REPOSITORY-OVERVIEW.md)
+- [CONTRIBUTING.md](CONTRIBUTING.md)
+- [RELEASE.md](RELEASE.md)
+- [CHANGELOG.md](CHANGELOG.md)
 
-## Notes
+## What this repo is not
 
-- No application source, package manifest, or backend runtime remains in this branch.
-- The documentation is preserved as an archive of the removed Gnosys implementation and product plan.
+- not a legacy OpenClaw plugin archive
+- not a cloud-only assistant
+- not a multi-channel chat integration product
+- not a fully autonomous unrestricted agent system
+
+## Next focus areas
+
+The next layers to deepen are:
+
+1. schedule daemon and retry automation
+2. memory governance and promotion rules
+3. skill authoring, testing, and rollback
+4. richer diagnostics replay and diffing
+5. formal evaluation and regression benchmarks

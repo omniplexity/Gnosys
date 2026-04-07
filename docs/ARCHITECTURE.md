@@ -11,6 +11,34 @@ The architecture should support:
 - project-aware and schedule-aware workflows
 - modular growth without monolithic coupling
 
+## 1.1 Current implementation mapping
+
+The repository now implements the architecture at a core-product level rather than only as a future design.
+
+- `apps/desktop/` owns the desktop shell and operational UI
+- `apps/backend/` owns the backend runtime, memory engine, policy layer, and persistence
+- `packages/shared/` owns shared domain types and seed data
+
+Implemented subsystems:
+
+- desktop application shell
+- workspace and state management
+- orchestration and agent runtime
+- memory platform
+- skills platform
+- task and scheduling platform
+- policy and permissions layer
+- observability and event log layer
+- persistence layer
+
+Partial or still-maturing subsystems:
+
+- tool execution layer
+- advanced scheduling automation
+- richer memory governance and evaluation
+- learned skill lifecycle
+- advanced diagnostics and replay analytics
+
 ## 2. Major Subsystems
 
 - Desktop Application Shell

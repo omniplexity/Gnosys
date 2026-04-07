@@ -2,38 +2,42 @@
 
 ## Purpose
 
-This repository is a clean scaffold for the next Gnosys build.
+This repository houses the current Gnosys implementation: a desktop agent workspace with a backend runtime and shared domain model.
 
 ## Top-level layout
 
-- `README.md` - repository overview
+- `README.md` - repository overview and quick start
 - `CHANGELOG.md` - notable changes
 - `CONTRIBUTING.md` - contribution guidance
-- `RELEASE.md` - versioning and release policy
-- `apps/desktop/` - desktop console app
-- `apps/backend/` - Python backend scaffold
-- `packages/shared/` - shared domain package
-- `docs/` - architecture, roadmap, and project docs
+- `RELEASE.md` - release and versioning policy
+- `apps/desktop/` - desktop console application
+- `apps/backend/` - FastAPI backend, store, memory, runtime, and policy layers
+- `packages/shared/` - shared domain package and seed data
+- `docs/` - product, architecture, roadmap, status, and audit documentation
 
 ## Workspace roles
 
 ### Desktop app
 
 - renders the operator console
-- consumes shared domain data
-- provides the primary chat/work surface
+- provides the primary chat and workspace surface
+- exposes policy, CRUD, replay, and memory review controls
 
-### Backend scaffold
+### Backend
 
-- exposes health and status endpoints
-- becomes the runtime home for memory, orchestration, and persistence
+- persists core entities to SQLite
+- enforces policy and approval controls
+- runs memory, orchestration, scheduling, and diagnostics APIs
 
 ### Shared package
 
-- centralizes navigation and domain types
-- keeps the desktop and backend aligned on data shape
+- centralizes shared domain types
+- keeps backend and desktop aligned on entity shape and seed data
 
-## Notes
+## Current assessment
 
-- This file is a codebase map for the scaffolded repo.
-- It should be updated as new packages and apps are added.
+This repository is no longer a blank scaffold.
+
+- the core product loop is implemented
+- the remaining work is to deepen automation and intelligence
+- the docs should be updated alongside each new layer
