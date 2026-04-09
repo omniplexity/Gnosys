@@ -71,3 +71,14 @@
 ## Incremental implementation note
 
 This phase is a maturity pass, not a rewrite. It preserves the current Gnosys architecture, local-first persistence model, approval semantics, orchestration behavior, and API shape while introducing the service and router seams needed for deeper scheduling, governance, and UI decomposition work.
+
+## Phase 2 progress note
+
+Frontend maintainability work is now underway:
+
+- shared response/error handling is centralized under `apps/desktop/src/lib/`
+- `App.tsx` is being reduced to a composition shell over domain hooks
+- desktop state for snapshot loading, orchestration launch, chat, memory, policy, CRUD, schedules, replay, and skill lifecycle has begun moving into `apps/desktop/src/hooks/`
+- isolated rendering helpers are beginning to move into `apps/desktop/src/components/`
+
+This is still an incremental refactor. The goal is to preserve the current product behavior while making the desktop shell safer to evolve.

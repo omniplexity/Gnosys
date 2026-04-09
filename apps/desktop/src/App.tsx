@@ -12,60 +12,25 @@ import {
   seedTasks,
   seedChatSessions,
   workspaceSummary,
-  type Agent,
   type AgentRun,
-  type ChatAttachment,
-  type ChatMessage,
-  type MemoryBrowseResult,
   type MemoryItem,
-  type MemoryLayer,
-  type Project,
-  type Schedule,
-  type Skill,
-  type Task,
-  type TaskRun,
   type WorkspaceSnapshot
 } from '@gnosys/shared';
 import {
-  appendEvent,
-  archiveMemoryItem,
-  createSkillDraft,
   createProjectThread,
-  deleteCrudResource,
-  forgetMemoryItem,
-  launchOrchestration,
-  loadChatAttachments,
-  loadChatMessages,
-  loadDiagnosticsRuns,
-  loadMemoryBrowser,
-  loadMemoryReview,
-  loadReplay,
-  loadSkillLifecycle,
-  loadSnapshot,
-  pinMemoryItem,
-  promoteMemoryItem,
-  promoteSkill,
-  resolveApproval as resolveApprovalRequest,
-  retrieveMemory,
-  retryScheduleRun,
-  rollbackSkill,
-  runSchedule,
-  saveCrudResource,
-  sendChatMessage,
-  testSkill,
-  uploadChatAttachment,
-  updateEntityPolicy,
-  updatePolicy,
-  type DiagnosticsRunListResponse,
-  type EntityPolicyRecord,
   type LaunchResponse,
-  type MemoryBrowserResponse,
-  type MemoryRetrievalResult,
-  type MemoryReviewResponse,
-  type ReplayResponse,
-  type SkillLifecycleResponse,
-  type SkillTestRunResponse
 } from './api';
+import { MemoryBrowserGroup } from './components/memory/MemoryBrowserGroup';
+import { useChat } from './hooks/useChat';
+import { buildCrudDraft, crudConfig, crudKinds, getCrudItems, NEW_ITEM_SENTINEL, type CrudDraft, type CrudKind } from './hooks/useCrud';
+import { useCrud } from './hooks/useCrud';
+import { useMemory } from './hooks/useMemory';
+import { useOrchestration } from './hooks/useOrchestration';
+import { usePolicy } from './hooks/usePolicy';
+import { useReplay } from './hooks/useReplay';
+import { useSchedules } from './hooks/useSchedules';
+import { useSkills } from './hooks/useSkills';
+import { useWorkspaceSnapshot } from './hooks/useWorkspaceSnapshot';
 import { AgentsWorkspace } from './modules/AgentsWorkspace';
 import { ChatWorkspace } from './modules/ChatWorkspace';
 import { DiagnosticsPanel } from './modules/DiagnosticsPanel';
@@ -79,8 +44,6 @@ import { TasksWorkspace } from './modules/TasksWorkspace';
 import { useEffect, useMemo, useState } from 'react';
 
 const bottomTabs = ['Logs', 'Timeline', 'Trace'] as const;
-
-type CrudDraft = Record<string, string | boolean>;
 
   const fallbackSnapshot: WorkspaceSnapshot = {
     workspace: {
@@ -131,10 +94,6 @@ type CrudDraft = Record<string, string | boolean>;
   }
 };
 
-type CrudKind = 'tasks' | 'projects' | 'agents' | 'skills' | 'schedules';
-const NEW_ITEM_SENTINEL = '__new__';
-
-const crudKinds: CrudKind[] = ['tasks', 'projects', 'agents', 'skills', 'schedules'];
 type AdvancedSection = 'Launch' | 'Policy' | 'Approvals' | 'Runs' | 'More' | 'Schedules' | 'Skills' | 'Memory' | 'Diagnostics' | 'CRUD';
 
 function buildRunTree(agentRuns: AgentRun[]): AgentRun[] {
@@ -146,112 +105,6 @@ function buildRunTree(agentRuns: AgentRun[]): AgentRun[] {
   });
 }
 
-function getCrudItems(snapshot: WorkspaceSnapshot, kind: CrudKind): Array<Record<string, unknown> & { id: string }> {
-  switch (kind) {
-    case 'tasks':
-      return snapshot.tasks as unknown as Array<Record<string, unknown> & { id: string }>;
-    case 'projects':
-      return snapshot.projects as unknown as Array<Record<string, unknown> & { id: string }>;
-    case 'agents':
-      return snapshot.agents as unknown as Array<Record<string, unknown> & { id: string }>;
-    case 'skills':
-      return snapshot.skills as unknown as Array<Record<string, unknown> & { id: string }>;
-    case 'schedules':
-      return snapshot.schedules as unknown as Array<Record<string, unknown> & { id: string }>;
-  }
-}
-
-function buildCrudDraft(kind: CrudKind, item: unknown): CrudDraft {
-  if (!item || typeof item !== 'object') {
-    return {};
-  }
-  return { ...item } as CrudDraft;
-}
-
-function normalizeCrudDraft(kind: CrudKind, draft: CrudDraft): Record<string, unknown> {
-  switch (kind) {
-    case 'tasks':
-      return {
-        title: String(draft.title ?? ''),
-        summary: String(draft.summary ?? ''),
-        status: String(draft.status ?? 'Inbox'),
-        priority: String(draft.priority ?? 'Medium'),
-        project_id: draft.project_id ? String(draft.project_id) : null
-      };
-    case 'projects':
-      return {
-        name: String(draft.name ?? ''),
-        summary: String(draft.summary ?? ''),
-        status: String(draft.status ?? 'Planned'),
-        owner: String(draft.owner ?? 'Gnosys')
-      };
-    case 'agents':
-      return {
-        name: String(draft.name ?? ''),
-        role: String(draft.role ?? ''),
-        status: String(draft.status ?? 'Idle')
-      };
-    case 'skills':
-      return {
-        name: String(draft.name ?? ''),
-        description: String(draft.description ?? ''),
-        scope: String(draft.scope ?? 'workspace'),
-        version: String(draft.version ?? '0.1.0'),
-        source_type: String(draft.source_type ?? 'authored'),
-        status: String(draft.status ?? 'draft'),
-        project_id: draft.project_id ? String(draft.project_id) : null
-      };
-    case 'schedules':
-      return {
-        name: String(draft.name ?? ''),
-        target_type: String(draft.target_type ?? 'skill'),
-        target_ref: String(draft.target_ref ?? ''),
-        schedule_expression: String(draft.schedule_expression ?? ''),
-        timezone: String(draft.timezone ?? 'America/New_York'),
-        enabled: Boolean(draft.enabled),
-        approval_policy: String(draft.approval_policy ?? 'inherit'),
-        failure_policy: String(draft.failure_policy ?? 'retry_once'),
-        last_run_at: draft.last_run_at ? String(draft.last_run_at) : null,
-        next_run_at: draft.next_run_at ? String(draft.next_run_at) : null,
-        project_id: draft.project_id ? String(draft.project_id) : null
-      };
-  }
-}
-
-function crudConfig(kind: CrudKind) {
-  switch (kind) {
-    case 'tasks':
-      return {
-        title: 'Tasks',
-        createLabel: 'Create task',
-        endpoint: '/api/tasks'
-      };
-    case 'projects':
-      return {
-        title: 'Projects',
-        createLabel: 'Create project',
-        endpoint: '/api/projects'
-      };
-    case 'agents':
-      return {
-        title: 'Agents',
-        createLabel: 'Create agent',
-        endpoint: '/api/agents'
-      };
-    case 'skills':
-      return {
-        title: 'Skills',
-        createLabel: 'Create skill',
-        endpoint: '/api/skills'
-      };
-    case 'schedules':
-      return {
-        title: 'Schedules',
-        createLabel: 'Create schedule',
-        endpoint: '/api/schedules'
-      };
-  }
-}
 
 const advancedSections: Array<{ label: AdvancedSection; description: string }> = [
   { label: 'Policy', description: 'Workspace and entity policy controls' },
@@ -331,713 +184,124 @@ function describeWorkspacePolicy(workspace: WorkspaceSnapshot['workspace'], pend
 export default function App() {
   const [activeSection, setActiveSection] = useState(navSections[0]);
   const [activeTask, setActiveTask] = useState(seedTasks[0].id);
-  const [activeChatSessionId, setActiveChatSessionId] = useState(seedChatSessions[0]?.id ?? '');
-  const [chatDraft, setChatDraft] = useState('');
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [chatAttachments, setChatAttachments] = useState<ChatAttachment[]>([]);
-  const [pendingAttachmentIds, setPendingAttachmentIds] = useState<string[]>([]);
-  const [chatThreadState, setChatThreadState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
-  const [chatThreadError, setChatThreadError] = useState<string | null>(null);
-  const [chatSendState, setChatSendState] = useState<'idle' | 'sending' | 'error'>('idle');
-  const [chatSendError, setChatSendError] = useState<string | null>(null);
   const [activeProjectThreadId, setActiveProjectThreadId] = useState(seedProjectThreads[0]?.id ?? '');
   const [activeTab, setActiveTab] = useState<(typeof bottomTabs)[number]>('Logs');
-  const [snapshot, setSnapshot] = useState<WorkspaceSnapshot>(fallbackSnapshot);
-  const [loadingState, setLoadingState] = useState<'idle' | 'loading' | 'ready' | 'error'>('loading');
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [advancedSection, setAdvancedSection] = useState<AdvancedSection>('Launch');
-  const [eventDraft, setEventDraft] = useState('desktop.checkpoint');
-  const [memoryQuery, setMemoryQuery] = useState('persistence event log');
-  const [memoryScope, setMemoryScope] = useState('workspace');
-  const [memoryRole, setMemoryRole] = useState('orchestrator');
-  const [memoryProjectId, setMemoryProjectId] = useState('project-001');
-  const [retrieval, setRetrieval] = useState<MemoryRetrievalResult | null>(null);
-  const [memoryError, setMemoryError] = useState<string | null>(null);
-  const [memoryState, setMemoryState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
-  const [memoryBrowser, setMemoryBrowser] = useState<MemoryBrowserResponse | null>(null);
-  const [memoryBrowserState, setMemoryBrowserState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
-  const [memoryBrowserError, setMemoryBrowserError] = useState<string | null>(null);
-  const [memoryReview, setMemoryReview] = useState<MemoryReviewResponse | null>(null);
-  const [memoryReviewState, setMemoryReviewState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
-  const [memoryReviewError, setMemoryReviewError] = useState<string | null>(null);
-  const [launchObjective, setLaunchObjective] = useState('Implement phase 3 orchestration runtime for Gnosys');
-  const [launchMode, setLaunchMode] = useState('Supervised');
   const [selectedModel, setSelectedModel] = useState('GPT-5.4');
   const [reasoningStrength, setReasoningStrength] = useState('medium');
-  const [launchState, setLaunchState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
-  const [launchError, setLaunchError] = useState<string | null>(null);
-  const [launchResponse, setLaunchResponse] = useState<LaunchResponse | null>(null);
-  const [policyState, setPolicyState] = useState<'idle' | 'saving' | 'error'>('idle');
-  const [policyError, setPolicyError] = useState<string | null>(null);
-  const [crudKind, setCrudKind] = useState<CrudKind>('tasks');
-  const [crudSelectionId, setCrudSelectionId] = useState<string>('');
-  const [crudDraft, setCrudDraft] = useState<CrudDraft>({});
-  const [crudState, setCrudState] = useState<'idle' | 'saving' | 'error'>('idle');
-  const [crudError, setCrudError] = useState<string | null>(null);
-  const [skillLifecycle, setSkillLifecycle] = useState<SkillLifecycleResponse | null>(null);
-  const [skillLifecycleState, setSkillLifecycleState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
-  const [skillLifecycleError, setSkillLifecycleError] = useState<string | null>(null);
-  const [skillTestScenario, setSkillTestScenario] = useState('Inspect the selected skill against a realistic workflow.');
-  const [skillTestExpectedOutcome, setSkillTestExpectedOutcome] = useState('The skill produces a clear, actionable result and passes the lifecycle check.');
-  const [policyEntityType, setPolicyEntityType] = useState<'task' | 'project' | 'skill' | 'schedule'>('project');
-  const [policyEntityId, setPolicyEntityId] = useState('project-001');
-  const [policyEntityMode, setPolicyEntityMode] = useState('Supervised');
-  const [policyEntityKillSwitch, setPolicyEntityKillSwitch] = useState(false);
-  const [policyEntityBias, setPolicyEntityBias] = useState('supervised');
-  const [policyEntityState, setPolicyEntityState] = useState<'idle' | 'saving' | 'error'>('idle');
-  const [policyEntityError, setPolicyEntityError] = useState<string | null>(null);
-  const [diagnosticsQuery, setDiagnosticsQuery] = useState('replay');
-  const [diagnosticsStatus, setDiagnosticsStatus] = useState('Running');
-  const [diagnosticsApprovalRequired, setDiagnosticsApprovalRequired] = useState('any');
-  const [diagnosticsProjectId, setDiagnosticsProjectId] = useState('');
-  const [diagnosticsProjectThreadId, setDiagnosticsProjectThreadId] = useState('');
-  const [diagnosticsChatSessionId, setDiagnosticsChatSessionId] = useState('');
-  const [diagnosticsRuns, setDiagnosticsRuns] = useState<DiagnosticsRunListResponse | null>(null);
-  const [diagnosticsState, setDiagnosticsState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
-  const [diagnosticsError, setDiagnosticsError] = useState<string | null>(null);
-  const [replayRunId, setReplayRunId] = useState('');
-  const [replay, setReplay] = useState<ReplayResponse | null>(null);
-  const [replayState, setReplayState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
-  const [replayError, setReplayError] = useState<string | null>(null);
+  const {
+    snapshot,
+    loadingState,
+    errorMessage,
+    refreshSnapshot,
+  } = useWorkspaceSnapshot(fallbackSnapshot);
 
-  async function refreshSnapshot() {
-    const state = await loadSnapshot();
-    setSnapshot(state);
-    return state;
-  }
+  const {
+    activeTask: orchestrationTaskId,
+    setActiveTask: setOrchestrationTaskId,
+    launchObjective,
+    setLaunchObjective,
+    launchMode,
+    setLaunchMode,
+    launchState,
+    launchError,
+    launchResponse,
+    setLaunchResponse,
+    runLaunch,
+    seedLaunchFromRun,
+  } = useOrchestration({
+    workspaceAutonomyMode: snapshot.workspace.autonomy_mode,
+    refreshSnapshot,
+    onShowTrace: () => setActiveTab('Trace'),
+  });
 
-  async function refreshChatThread(sessionId = activeChatSessionId) {
-    if (!sessionId) {
-      setChatMessages([]);
-      setChatThreadState('idle');
-      setChatThreadError(null);
-      return [];
-    }
-    setChatThreadState('loading');
-    setChatThreadError(null);
-    try {
-      const messages = await loadChatMessages(sessionId);
-      setChatMessages(messages);
-      setChatThreadState('ready');
-      return messages;
-    } catch (error) {
-      setChatMessages([]);
-      setChatThreadError(error instanceof Error ? error.message : 'Failed to load chat thread');
-      setChatThreadState('error');
-      return [];
-    }
-  }
+  const {
+    activeChatSessionId,
+    setActiveChatSessionId,
+    chatDraft,
+    setChatDraft,
+    chatMessages,
+    chatAttachments,
+    pendingAttachmentIds,
+    chatThreadState,
+    chatThreadError,
+    chatSendState,
+    chatSendError,
+    uploadChatFiles,
+    sendCurrentChatMessage,
+  } = useChat({
+    chatSessions: snapshot.chat_sessions,
+    selectedModel,
+    reasoningStrength,
+    refreshSnapshot,
+  });
 
-  async function refreshChatAttachments(sessionId = activeChatSessionId) {
-    if (!sessionId) {
-      setChatAttachments([]);
-      setPendingAttachmentIds([]);
-      return [];
-    }
-    try {
-      const attachments = await loadChatAttachments(sessionId);
-      setChatAttachments(attachments);
-      return attachments;
-    } catch {
-      setChatAttachments([]);
-      return [];
-    }
-  }
+  const memory = useMemory({
+    projectIds: snapshot.projects.map((project) => project.id),
+    initialProjectId: snapshot.projects[0]?.id ?? '',
+    refreshSnapshot,
+    onShowLogs: () => setActiveTab('Logs'),
+    onShowTrace: () => setActiveTab('Trace'),
+  });
 
-  async function runMemorySearch(query = memoryQuery, role = memoryRole, scope = memoryScope, projectId = memoryProjectId) {
-    setMemoryState('loading');
-    setMemoryError(null);
-    try {
-      const result = await retrieveMemory(query, role, scope || null, projectId || null);
-      setRetrieval(result);
-      setMemoryState('ready');
-      setActiveTab('Trace');
-    } catch (error) {
-      setMemoryError(error instanceof Error ? error.message : 'Failed to retrieve memory');
-      setMemoryState('error');
-    }
-  }
+  const policy = usePolicy({
+    snapshot,
+    refreshSnapshot,
+    initialProjectId: snapshot.projects[0]?.id ?? '',
+  });
 
-  async function refreshMemoryBrowser(query = memoryQuery, projectId = memoryProjectId) {
-    setMemoryBrowserState('loading');
-    setMemoryBrowserError(null);
-    try {
-      const browser = await loadMemoryBrowser(query, projectId || null, 12);
-      setMemoryBrowser(browser);
-      setMemoryBrowserState('ready');
-    } catch (error) {
-      setMemoryBrowserError(error instanceof Error ? error.message : 'Failed to load memory browser');
-      setMemoryBrowserState('error');
-    }
-  }
+  const crud = useCrud({ snapshot, refreshSnapshot });
 
-  async function refreshMemoryReview() {
-    setMemoryReviewState('loading');
-    setMemoryReviewError(null);
-    try {
-      const review = await loadMemoryReview();
-      setMemoryReview(review);
-      setMemoryReviewState('ready');
-    } catch (error) {
-      setMemoryReviewError(error instanceof Error ? error.message : 'Failed to load memory review');
-      setMemoryReviewState('error');
-    }
-  }
+  const replay = useReplay({
+    snapshot,
+    onShowTrace: () => setActiveTab('Trace'),
+  });
 
-  async function sendCurrentChatMessage() {
-    const sessionId = activeChatSessionId || snapshot.chat_sessions[0]?.id || '';
-    const content = chatDraft.trim();
-    if (!sessionId || !content) {
-      return;
-    }
-    setChatSendState('sending');
-    setChatSendError(null);
-    try {
-      await sendChatMessage(sessionId, {
-        content,
-        selected_model: selectedModel,
-        reasoning_strength: reasoningStrength,
-        requested_by: 'desktop',
-        mode: 'personal',
-        attachment_ids: pendingAttachmentIds,
-      });
-      setChatDraft('');
-      setPendingAttachmentIds([]);
-      await Promise.all([refreshSnapshot(), refreshChatThread(sessionId), refreshChatAttachments(sessionId)]);
-      setChatSendState('idle');
-    } catch (error) {
-      setChatSendError(error instanceof Error ? error.message : 'Failed to send chat message');
-      setChatSendState('error');
-    }
-  }
+  const schedules = useSchedules({
+    refreshSnapshot,
+    runMemorySearch: () => memory.runMemorySearch(),
+    setPolicyError: policy.setPolicyError,
+    onShowLogs: () => setActiveTab('Logs'),
+  });
+  const selectedSkill = crud.crudKind === 'skills' && crud.crudSelectionId && crud.crudSelectionId !== NEW_ITEM_SENTINEL
+    ? snapshot.skills.find((skill) => skill.id === crud.crudSelectionId) ?? null
+    : null;
+  const selectedSkillId = selectedSkill?.id ?? null;
+  const selectedSkillName = selectedSkill?.name ?? '';
 
-  async function runLaunch(objective = launchObjective, mode = launchMode) {
-    setLaunchState('loading');
-    setLaunchError(null);
-    try {
-      const result = await launchOrchestration(objective, mode, selectedTask.id, {
-        project_id: activeSection === 'Projects' ? selectedProject?.id ?? null : null,
-        project_thread_id: activeSection === 'Projects' ? activeProjectThreadId || null : null,
-        chat_session_id: activeSection === 'Chat' ? activeChatSessionId || null : null,
-      });
-      setLaunchResponse(result);
-      await refreshSnapshot();
-      setLaunchState('ready');
-      setActiveTab('Trace');
-    } catch (error) {
-      setLaunchError(error instanceof Error ? error.message : 'Failed to launch orchestration');
-      setLaunchState('error');
-    }
-  }
-
-  async function savePolicyMode(nextMode: string, nextKillSwitch: boolean) {
-    setPolicyState('saving');
-    setPolicyError(null);
-    try {
-      const updated = await updatePolicy({ autonomy_mode: nextMode, kill_switch: nextKillSwitch });
-      setLaunchMode(updated.autonomy_mode);
-      await refreshSnapshot();
-      setPolicyState('idle');
-      setActiveTab('Logs');
-    } catch (error) {
-      setPolicyError(error instanceof Error ? error.message : 'Failed to update policy');
-      setPolicyState('error');
-    }
-  }
-
-  async function resolveApproval(approvalId: string, status: 'approved' | 'rejected') {
-    setPolicyState('saving');
-    setPolicyError(null);
-    try {
-      await resolveApprovalRequest(approvalId, status);
-      await refreshSnapshot();
-      setPolicyState('idle');
-    } catch (error) {
-      setPolicyError(error instanceof Error ? error.message : 'Failed to resolve approval');
-      setPolicyState('error');
-    }
-  }
-
-  async function saveEntityPolicy() {
-    setPolicyEntityState('saving');
-    setPolicyEntityError(null);
-    try {
-      const updated = await updateEntityPolicy(policyEntityType, policyEntityId, {
-        autonomy_mode: policyEntityMode,
-        kill_switch: policyEntityKillSwitch,
-        approval_bias: policyEntityBias
-      });
-      setPolicyEntityMode(updated.autonomy_mode);
-      setPolicyEntityKillSwitch(updated.kill_switch);
-      setPolicyEntityBias(updated.approval_bias);
-      await refreshSnapshot();
-      setPolicyEntityState('idle');
-    } catch (error) {
-      setPolicyEntityError(error instanceof Error ? error.message : 'Failed to update entity policy');
-      setPolicyEntityState('error');
-    }
-  }
-
-  async function refreshSkillLifecycle(skillId: string) {
-    setSkillLifecycleState('loading');
-    setSkillLifecycleError(null);
-    try {
-      const lifecycle = await loadSkillLifecycle(skillId);
-      setSkillLifecycle(lifecycle);
-      setSkillLifecycleState('ready');
-      return lifecycle;
-    } catch (error) {
-      setSkillLifecycleError(error instanceof Error ? error.message : 'Failed to load skill lifecycle');
-      setSkillLifecycleState('error');
-      return null;
-    }
-  }
-
-  async function createLearnedSkillDraft(skillId: string) {
-    setSkillLifecycleState('loading');
-    setSkillLifecycleError(null);
-    try {
-      await createSkillDraft(skillId);
-      const nextSnapshot = await refreshSnapshot();
-      const refreshedSkill = nextSnapshot.skills.find((skill) => skill.parent_skill_id === skillId) ?? nextSnapshot.skills[0] ?? null;
-      if (refreshedSkill) {
-        setCrudSelectionId(refreshedSkill.id);
-        setCrudDraft(buildCrudDraft('skills', refreshedSkill));
-        await refreshSkillLifecycle(refreshedSkill.id);
-      }
-      setCrudState('idle');
-      return true;
-    } catch (error) {
-      setSkillLifecycleError(error instanceof Error ? error.message : 'Failed to create learned skill draft');
-      setSkillLifecycleState('error');
-      return false;
-    }
-  }
-
-  async function runSkillTest(skillId: string) {
-    setSkillLifecycleState('loading');
-    setSkillLifecycleError(null);
-    try {
-      await testSkill(skillId, {
-        scenario: skillTestScenario,
-        expected_outcome: skillTestExpectedOutcome,
-        requested_by: 'desktop'
-      });
-      await refreshSnapshot();
-      await refreshSkillLifecycle(skillId);
-      return true;
-    } catch (error) {
-      setSkillLifecycleError(error instanceof Error ? error.message : 'Failed to run skill test');
-      setSkillLifecycleState('error');
-      return false;
-    }
-  }
-
-  async function promoteSelectedSkill(skillId: string) {
-    setSkillLifecycleState('loading');
-    setSkillLifecycleError(null);
-    try {
-      await promoteSkill(skillId);
-      const nextSnapshot = await refreshSnapshot();
-      const current = nextSnapshot.skills.find((skill) => skill.id === skillId) ?? null;
-      if (current) {
-        setCrudDraft(buildCrudDraft('skills', current));
-        await refreshSkillLifecycle(skillId);
-      }
-      return true;
-    } catch (error) {
-      setSkillLifecycleError(error instanceof Error ? error.message : 'Failed to promote skill');
-      setSkillLifecycleState('error');
-      return false;
-    }
-  }
-
-  async function rollbackSelectedSkill(skillId: string) {
-    setSkillLifecycleState('loading');
-    setSkillLifecycleError(null);
-    try {
-      const restored = await rollbackSkill(skillId);
-      const nextSnapshot = await refreshSnapshot();
-      const current = nextSnapshot.skills.find((skill) => skill.id === restored.id) ?? restored;
-      setCrudSelectionId(current.id);
-      setCrudDraft(buildCrudDraft('skills', current));
-      await refreshSkillLifecycle(current.id);
-      return true;
-    } catch (error) {
-      setSkillLifecycleError(error instanceof Error ? error.message : 'Failed to roll back skill');
-      setSkillLifecycleState('error');
-      return false;
-    }
-  }
-
-  async function executeSchedule(scheduleId: string) {
-    try {
-      await runSchedule(scheduleId);
-      await refreshSnapshot();
-      await runMemorySearch(memoryQuery, memoryRole, memoryScope, memoryProjectId);
-      setActiveTab('Logs');
-    } catch (error) {
-      setPolicyError(error instanceof Error ? error.message : 'Failed to run schedule');
-    }
-  }
-
-  async function retryRun(runId: string) {
-    try {
-      await retryScheduleRun(runId);
-      await refreshSnapshot();
-      setActiveTab('Logs');
-    } catch (error) {
-      setPolicyError(error instanceof Error ? error.message : 'Failed to retry schedule');
-    }
-  }
-
-  async function loadRunReplay(runId: string) {
-    setReplayState('loading');
-    setReplayError(null);
-    try {
-      const result = await loadReplay(runId);
-      setReplay(result);
-      setReplayRunId(runId);
-      setReplayState('ready');
-      setActiveTab('Trace');
-    } catch (error) {
-      setReplayError(error instanceof Error ? error.message : 'Failed to load replay');
-      setReplayState('error');
-    }
-  }
-
-  async function refreshDiagnosticsRuns(
-    query = diagnosticsQuery,
-    status = diagnosticsStatus,
-    approvalRequired = diagnosticsApprovalRequired,
-    projectId = diagnosticsProjectId,
-    projectThreadId = diagnosticsProjectThreadId,
-    chatSessionId = diagnosticsChatSessionId
-  ) {
-    setDiagnosticsState('loading');
-    setDiagnosticsError(null);
-    try {
-      const result = await loadDiagnosticsRuns({
-        query: query.trim() || undefined,
-        status: status === 'Any' ? undefined : status,
-        approvalRequired: approvalRequired === 'any' ? undefined : approvalRequired,
-        projectId: projectId || undefined,
-        projectThreadId: projectThreadId || undefined,
-        chatSessionId: chatSessionId || undefined,
-        limit: 12
-      });
-      setDiagnosticsRuns(result);
-      if (!replayRunId && result.task_runs[0]) {
-        setReplayRunId(result.task_runs[0].id);
-      }
-      setDiagnosticsState('ready');
-    } catch (error) {
-      setDiagnosticsError(error instanceof Error ? error.message : 'Failed to load diagnostics runs');
-      setDiagnosticsState('error');
-    }
-  }
-
-  async function promoteReviewItem(itemId: string) {
-    try {
-      await promoteMemoryItem(itemId);
-      await refreshSnapshot();
-      await refreshMemoryBrowser(memoryQuery, memoryProjectId);
-      await refreshMemoryReview();
-      await runMemorySearch(memoryQuery, memoryRole, memoryScope, memoryProjectId);
-      setActiveTab('Logs');
-    } catch (error) {
-      setMemoryReviewError(error instanceof Error ? error.message : 'Failed to promote memory item');
-      setMemoryReviewState('error');
-    }
-  }
-
-  async function archiveReviewItem(itemId: string) {
-    try {
-      await archiveMemoryItem(itemId);
-      await refreshSnapshot();
-      await refreshMemoryBrowser(memoryQuery, memoryProjectId);
-      await refreshMemoryReview();
-      await runMemorySearch(memoryQuery, memoryRole, memoryScope, memoryProjectId);
-      setActiveTab('Logs');
-    } catch (error) {
-      setMemoryReviewError(error instanceof Error ? error.message : 'Failed to archive memory item');
-      setMemoryReviewState('error');
-    }
-  }
-
-  async function pinReviewItem(itemId: string) {
-    try {
-      await pinMemoryItem(itemId);
-      await refreshSnapshot();
-      await refreshMemoryBrowser(memoryQuery, memoryProjectId);
-      await refreshMemoryReview();
-      await runMemorySearch(memoryQuery, memoryRole, memoryScope, memoryProjectId);
-      setActiveTab('Logs');
-    } catch (error) {
-      setMemoryReviewError(error instanceof Error ? error.message : 'Failed to pin memory item');
-      setMemoryReviewState('error');
-    }
-  }
-
-  async function forgetReviewItem(itemId: string) {
-    try {
-      await forgetMemoryItem(itemId);
-      await refreshSnapshot();
-      await refreshMemoryBrowser(memoryQuery, memoryProjectId);
-      await refreshMemoryReview();
-      await runMemorySearch(memoryQuery, memoryRole, memoryScope, memoryProjectId);
-      setActiveTab('Logs');
-    } catch (error) {
-      setMemoryReviewError(error instanceof Error ? error.message : 'Failed to forget memory item');
-      setMemoryReviewState('error');
-    }
-  }
-
-  async function saveCrudItem() {
-    const endpoint = crudConfig(crudKind).endpoint;
-    const normalized = normalizeCrudDraft(crudKind, crudDraft);
-    const creating = crudSelectionId === '' || crudSelectionId === NEW_ITEM_SENTINEL;
-    setCrudState('saving');
-    setCrudError(null);
-
-    try {
-      const saved = await saveCrudResource(endpoint, crudSelectionId, normalized, creating);
-      const nextSnapshot = await refreshSnapshot();
-      const items = getCrudItems(nextSnapshot, crudKind) as Array<{ id: string }>;
-      const nextSelection = saved.id || items[0]?.id || '';
-      setCrudSelectionId(nextSelection);
-      setCrudDraft(buildCrudDraft(crudKind, items.find((item) => item.id === nextSelection) ?? items[0] ?? {}));
-      setCrudState('idle');
-      setActiveTab('Logs');
-    } catch (error) {
-      setCrudError(error instanceof Error ? error.message : 'Failed to save item');
-      setCrudState('error');
-    }
-  }
-
-  async function deleteCrudItem() {
-    if (!crudSelectionId || crudSelectionId === NEW_ITEM_SENTINEL) {
-      return;
-    }
-    const endpoint = crudConfig(crudKind).endpoint;
-    setCrudState('saving');
-    setCrudError(null);
-
-    try {
-      await deleteCrudResource(endpoint, crudSelectionId);
-      const nextSnapshot = await refreshSnapshot();
-      const items = getCrudItems(nextSnapshot, crudKind) as Array<{ id: string }>;
-      const nextSelection = items[0]?.id || '';
-      setCrudSelectionId(nextSelection);
-      setCrudDraft(buildCrudDraft(crudKind, items[0] ?? {}));
-      setCrudState('idle');
-    } catch (error) {
-      setCrudError(error instanceof Error ? error.message : 'Failed to delete item');
-      setCrudState('error');
-    }
-  }
-
-  function startNewCrudItem() {
-    setCrudSelectionId(NEW_ITEM_SENTINEL);
-    setCrudDraft({});
-    setCrudError(null);
-    setCrudState('idle');
-  }
+  const skills = useSkills({
+    snapshot,
+    crudKind: crud.crudKind,
+    selectedSkillId,
+    selectedSkillName,
+    refreshSnapshot,
+    onSelectSkill: (skillId) => crud.setCrudSelectionId(skillId),
+    onReplaceSkillDraft: (skill) => crud.setCrudDraft(buildCrudDraft(skill)),
+  });
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function run() {
-      setLoadingState('loading');
-      try {
-        const state = await refreshSnapshot();
-        if (cancelled) {
-          return;
-        }
-        setSnapshot(state);
-        setLoadingState('ready');
-        setErrorMessage(null);
-        const firstRun = state.task_runs[0];
-        if (firstRun) {
-          setLaunchResponse({
-            task: state.tasks.find((task) => task.id === firstRun.task_id) ?? state.tasks[0] ?? seedTasks[0],
-            task_run: firstRun,
-            agent_runs: state.agent_runs.filter((run) => run.task_run_id === firstRun.id),
-            steps: [],
-            approvals_required: [],
-            summary: firstRun.summary,
-            decision: {
-              intent_classification: 'general',
-              execution_mode: 'task-created',
-              delegated_specialists: [],
-              invoked_skills: [],
-              approvals_triggered: firstRun.approval_required,
-              synthesis: firstRun.summary,
-            }
-          } as LaunchResponse);
-        }
-      } catch (error) {
-        if (cancelled) {
-          return;
-        }
-        setSnapshot(fallbackSnapshot);
-        setLoadingState('error');
-        setErrorMessage(error instanceof Error ? error.message : 'Failed to load backend state');
-      }
-    }
-
-    void run();
-    void refreshMemoryBrowser('persistence event log', memoryProjectId);
-    void runMemorySearch('persistence event log', 'orchestrator', 'workspace', memoryProjectId);
-    void refreshMemoryReview();
-    void refreshDiagnosticsRuns('replay', 'Running', 'any');
-
-    return () => {
-      cancelled = true;
-    };
+    void memory.refreshMemoryBrowser('persistence event log', memory.memoryProjectId);
+    void memory.runMemorySearch('persistence event log', 'orchestrator', 'workspace', memory.memoryProjectId);
+    void memory.refreshMemoryReview();
+    void replay.refreshDiagnosticsRuns('replay', 'Running', 'any');
   }, []);
 
   useEffect(() => {
-    setLaunchMode(snapshot.workspace.autonomy_mode);
-  }, [snapshot.workspace.autonomy_mode]);
-
-  useEffect(() => {
-    if (!memoryProjectId || !snapshot.projects.some((project) => project.id === memoryProjectId)) {
-      setMemoryProjectId(snapshot.projects[0]?.id ?? '');
-    }
-  }, [memoryProjectId, snapshot.projects]);
-
-  useEffect(() => {
-    if (!activeChatSessionId || !snapshot.chat_sessions.some((session) => session.id === activeChatSessionId)) {
-      setActiveChatSessionId(snapshot.chat_sessions[0]?.id ?? '');
-    }
-  }, [activeChatSessionId, snapshot.chat_sessions]);
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!activeChatSessionId) {
-      setChatMessages([]);
-      setChatThreadState('idle');
-      setChatThreadError(null);
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    async function loadThread() {
-      setChatThreadState('loading');
-      setChatThreadError(null);
-      try {
-        const messages = await loadChatMessages(activeChatSessionId);
-        if (cancelled) {
-          return;
-        }
-        setChatMessages(messages);
-        setChatThreadState('ready');
-      } catch (error) {
-        if (cancelled) {
-          return;
-        }
-        setChatMessages([]);
-        setChatThreadError(error instanceof Error ? error.message : 'Failed to load chat thread');
-        setChatThreadState('error');
-      }
-    }
-
-    void loadThread();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [activeChatSessionId]);
-
-  useEffect(() => {
-    setPendingAttachmentIds([]);
-    void refreshChatAttachments();
-  }, [activeChatSessionId]);
-
-  async function uploadChatFiles(files: FileList | null) {
-    const sessionId = activeChatSessionId || snapshot.chat_sessions[0]?.id || '';
-    if (!sessionId || !files || files.length === 0) {
+    const firstRun = snapshot.task_runs[0];
+    if (!firstRun || launchResponse) {
       return;
     }
-    setChatSendError(null);
-    try {
-      const uploaded = await Promise.all(
-        Array.from(files).map((file) =>
-          uploadChatAttachment(sessionId, {
-            file,
-            mode: 'personal',
-          })
-        )
-      );
-      setChatAttachments((prev) => [...uploaded, ...prev]);
-      setPendingAttachmentIds((prev) => [...prev, ...uploaded.map((item) => item.id)]);
-    } catch (error) {
-      setChatSendError(error instanceof Error ? error.message : 'Failed to upload attachment');
-      setChatSendState('error');
-    }
-  }
+    const task = snapshot.tasks.find((item) => item.id === firstRun.task_id) ?? snapshot.tasks[0] ?? seedTasks[0];
+    seedLaunchFromRun(firstRun, task.title, task.summary);
+  }, [launchResponse, seedLaunchFromRun, snapshot.agent_runs, snapshot.task_runs, snapshot.tasks]);
 
   useEffect(() => {
-    const selectedProjectId = memoryProjectId || snapshot.projects[0]?.id || '';
+    const selectedProjectId = memory.memoryProjectId || snapshot.projects[0]?.id || '';
     const threadsForProject = snapshot.project_threads.filter((thread) => thread.project_id === selectedProjectId);
     if (!threadsForProject.some((thread) => thread.id === activeProjectThreadId)) {
       setActiveProjectThreadId(threadsForProject[0]?.id ?? '');
     }
-  }, [activeProjectThreadId, memoryProjectId, snapshot.project_threads, snapshot.projects]);
-
-  useEffect(() => {
-    if (!policyEntityId) {
-      return;
-    }
-    const existing = snapshot.entity_policies.find(
-      (policy) => policy.entity_type === policyEntityType && policy.entity_id === policyEntityId
-    );
-    if (existing) {
-      setPolicyEntityMode(existing.autonomy_mode);
-      setPolicyEntityKillSwitch(existing.kill_switch);
-      setPolicyEntityBias(existing.approval_bias);
-      return;
-    }
-
-    const defaultsByType = {
-      task: snapshot.tasks.find((task) => task.id === policyEntityId),
-      project: snapshot.projects.find((project) => project.id === policyEntityId),
-      skill: snapshot.skills.find((skill) => skill.id === policyEntityId),
-      schedule: snapshot.schedules.find((schedule) => schedule.id === policyEntityId)
-    };
-    if (!defaultsByType[policyEntityType]) {
-      return;
-    }
-    setPolicyEntityMode(snapshot.workspace.autonomy_mode);
-    setPolicyEntityKillSwitch(snapshot.workspace.kill_switch);
-    setPolicyEntityBias(snapshot.workspace.approval_bias);
-  }, [
-    policyEntityId,
-    policyEntityType,
-    snapshot.entity_policies,
-    snapshot.projects,
-    snapshot.schedules,
-    snapshot.skills,
-    snapshot.tasks,
-    snapshot.workspace.autonomy_mode,
-    snapshot.workspace.approval_bias,
-    snapshot.workspace.kill_switch
-  ]);
-
-  useEffect(() => {
-    if (crudSelectionId === NEW_ITEM_SENTINEL) {
-      return;
-    }
-    const items = getCrudItems(snapshot, crudKind) as Array<{ id: string }>;
-    const nextSelection = items.find((item) => item.id === crudSelectionId)?.id ?? items[0]?.id ?? '';
-    if (nextSelection !== crudSelectionId) {
-      setCrudSelectionId(nextSelection);
-    }
-    const selectedItem = items.find((item) => item.id === nextSelection) ?? items[0];
-    setCrudDraft(selectedItem ? buildCrudDraft(crudKind, selectedItem) : {});
-  }, [crudKind, snapshot, crudSelectionId]);
+  }, [activeProjectThreadId, memory.memoryProjectId, snapshot.project_threads, snapshot.projects]);
 
   useEffect(() => {
     const nextModule = defaultModuleBySection[activeSection];
@@ -1045,102 +309,69 @@ export default function App() {
       setAdvancedSection(nextModule);
     }
 
-    if (activeSection === 'Tasks' && crudKind !== 'tasks') {
-      setCrudKind('tasks');
-    } else if (activeSection === 'Projects' && crudKind !== 'projects') {
-      setCrudKind('projects');
-    } else if (activeSection === 'Agents' && crudKind !== 'agents') {
-      setCrudKind('agents');
-    } else if (activeSection === 'Skills' && crudKind !== 'skills') {
-      setCrudKind('skills');
-    } else if (activeSection === 'Scheduled' && crudKind !== 'schedules') {
-      setCrudKind('schedules');
+    if (activeSection === 'Tasks' && crud.crudKind !== 'tasks') {
+      crud.setCrudKind('tasks');
+    } else if (activeSection === 'Projects' && crud.crudKind !== 'projects') {
+      crud.setCrudKind('projects');
+    } else if (activeSection === 'Agents' && crud.crudKind !== 'agents') {
+      crud.setCrudKind('agents');
+    } else if (activeSection === 'Skills' && crud.crudKind !== 'skills') {
+      crud.setCrudKind('skills');
+    } else if (activeSection === 'Scheduled' && crud.crudKind !== 'schedules') {
+      crud.setCrudKind('schedules');
     }
-  }, [activeSection, advancedSection, crudKind]);
+  }, [activeSection, advancedSection, crud]);
 
   const selectedTask = useMemo(
-    () => snapshot.tasks.find((task) => task.id === activeTask) ?? snapshot.tasks[0] ?? fallbackSnapshot.tasks[0],
-    [activeTask, snapshot.tasks]
+    () => snapshot.tasks.find((task) => task.id === activeTask) ?? snapshot.tasks.find((task) => task.id === orchestrationTaskId) ?? snapshot.tasks[0] ?? fallbackSnapshot.tasks[0],
+    [activeTask, orchestrationTaskId, snapshot.tasks]
   );
 
   const selectedAgent = snapshot.agents[0] ?? fallbackSnapshot.agents[0];
   const activeMemoryLayer = snapshot.memory_layers[0] ?? fallbackSnapshot.memory_layers[0];
-  const pendingApprovals = snapshot.approval_requests.filter((request) => request.status === 'pending');
+  const pendingApprovals = policy.pendingApprovals;
   const currentRun = launchResponse?.task_run ?? snapshot.task_runs[0] ?? null;
   const currentRunTree = currentRun ? buildRunTree(snapshot.agent_runs.filter((run) => run.task_run_id === currentRun.id)) : [];
   const availableProjects = snapshot.projects.length > 0 ? snapshot.projects : fallbackSnapshot.projects;
-  const selectedProject = availableProjects.find((project) => project.id === memoryProjectId) ?? availableProjects[0] ?? null;
-  const activeChatSession = snapshot.chat_sessions.find((session) => session.id === activeChatSessionId) ?? snapshot.chat_sessions[0] ?? null;
+  const selectedProject = availableProjects.find((project) => project.id === memory.memoryProjectId) ?? availableProjects[0] ?? null;
   const selectedSchedule = snapshot.schedules[0] ?? null;
   const latestScheduleRun = snapshot.schedule_runs[0] ?? null;
-  const replayTaskRunId = replayRunId || currentRun?.id || snapshot.task_runs[0]?.id || '';
+  const replayTaskRunId = replay.replayRunId || currentRun?.id || snapshot.task_runs[0]?.id || '';
   const selectedProjectPolicy = selectedProject
     ? snapshot.entity_policies.find((policy) => policy.entity_type === 'project' && policy.entity_id === selectedProject.id) ?? null
     : null;
   const activeEntityPolicy = snapshot.entity_policies.find(
-    (policy) => policy.entity_type === policyEntityType && policy.entity_id === policyEntityId
+    (entityPolicy) => entityPolicy.entity_type === policyEntityType && entityPolicy.entity_id === policyEntityId
   ) ?? null;
   const effectivePolicy = activeEntityPolicy ?? selectedProjectPolicy ?? null;
   const policySummary = describeWorkspacePolicy(snapshot.workspace, pendingApprovals.length);
   const policyScopeLabel =
     activeEntityPolicy !== null
-      ? `${policyEntityType} override active`
-      : policyEntityType === 'project'
+      ? `${policy.policyEntityType} override active`
+      : policy.policyEntityType === 'project'
         ? `Project scope follows ${snapshot.workspace.active_project}`
         : 'Workspace scope';
-  const policyEntityItems: Array<{ id: string; name: string }> = (() => {
-    switch (policyEntityType) {
-      case 'task':
-        return snapshot.tasks.map((item) => ({ id: item.id, name: item.title }));
-      case 'project':
-        return snapshot.projects.map((item) => ({ id: item.id, name: item.name }));
-      case 'skill':
-        return snapshot.skills.map((item) => ({ id: item.id, name: item.name }));
-      case 'schedule':
-        return snapshot.schedules.map((item) => ({ id: item.id, name: item.name }));
-    }
-  })();
-  const activeCrudItems = getCrudItems(snapshot, crudKind);
-  const activeCrudItem = crudSelectionId && crudSelectionId !== NEW_ITEM_SENTINEL
-    ? activeCrudItems.find((item) => item.id === crudSelectionId) ?? null
+  const activeCrudItems = getCrudItems(snapshot, crud.crudKind);
+  const activeCrudItem = crud.crudSelectionId && crud.crudSelectionId !== NEW_ITEM_SENTINEL
+    ? activeCrudItems.find((item) => item.id === crud.crudSelectionId) ?? null
     : null;
   const workspaceTaskSelectionId =
-    crudKind === 'tasks' && crudSelectionId && crudSelectionId !== NEW_ITEM_SENTINEL
-      ? crudSelectionId
+    crud.crudKind === 'tasks' && crud.crudSelectionId && crud.crudSelectionId !== NEW_ITEM_SENTINEL
+      ? crud.crudSelectionId
       : selectedTask.id;
   const workspaceProjectSelectionId =
-    crudKind === 'projects' && crudSelectionId && crudSelectionId !== NEW_ITEM_SENTINEL
-      ? crudSelectionId
+    crud.crudKind === 'projects' && crud.crudSelectionId && crud.crudSelectionId !== NEW_ITEM_SENTINEL
+      ? crud.crudSelectionId
       : selectedProject?.id ?? snapshot.projects[0]?.id ?? '';
   const workspaceAgentSelectionId =
-    crudKind === 'agents' && crudSelectionId && crudSelectionId !== NEW_ITEM_SENTINEL
-      ? crudSelectionId
+    crud.crudKind === 'agents' && crud.crudSelectionId && crud.crudSelectionId !== NEW_ITEM_SENTINEL
+      ? crud.crudSelectionId
       : snapshot.agents[0]?.id ?? fallbackSnapshot.agents[0].id;
-  const selectedSkill = crudKind === 'skills' && crudSelectionId && crudSelectionId !== NEW_ITEM_SENTINEL
-    ? snapshot.skills.find((skill) => skill.id === crudSelectionId) ?? null
-    : null;
   const workspaceSkillSelectionId =
-    crudKind === 'skills' && crudSelectionId && crudSelectionId !== NEW_ITEM_SENTINEL
-      ? crudSelectionId
+    crud.crudKind === 'skills' && crud.crudSelectionId && crud.crudSelectionId !== NEW_ITEM_SENTINEL
+      ? crud.crudSelectionId
       : selectedSkill?.id ?? snapshot.skills[0]?.id ?? '';
-  const selectedSkillId = selectedSkill?.id ?? null;
-  const selectedSkillName = selectedSkill?.name ?? '';
-  const replayHistoryRuns = diagnosticsRuns?.task_runs ?? snapshot.task_runs;
-  const replayAgentGroups = replay
-    ? Object.values(
-      replay.agent_runs.reduce<Record<string, { agent_id: string; agent_name: string; runs: AgentRun[] }>>(
-        (groups, run) => {
-          const key = run.agent_id;
-          if (!groups[key]) {
-            groups[key] = { agent_id: run.agent_id, agent_name: run.agent_name, runs: [] };
-          }
-          groups[key].runs.push(run);
-          return groups;
-        },
-        {}
-      )
-    )
-    : [];
+  const replayHistoryRuns = replay.replayHistoryRuns;
   const currentSectionTabs = sectionModules[activeSection]
     .map((moduleLabel) => advancedSections.find((section) => section.label === moduleLabel))
     .filter((section): section is { label: AdvancedSection; description: string } => section !== undefined);
@@ -1165,124 +396,110 @@ export default function App() {
                   ? `${replayHistoryRuns.length} runs visible for replay and inspection.`
                   : `${pendingApprovals.length} approvals pending under ${snapshot.workspace.autonomy_mode}.`;
 
-  useEffect(() => {
-    const lifecycleSkillId = selectedSkillId;
-    if (crudKind !== 'skills' || !lifecycleSkillId) {
-      setSkillLifecycle(null);
-      setSkillLifecycleState('idle');
-      setSkillLifecycleError(null);
-      return;
-    }
+  const {
+    eventDraft,
+    setEventDraft,
+    memoryQuery,
+    setMemoryQuery,
+    memoryScope,
+    setMemoryScope,
+    memoryRole,
+    setMemoryRole,
+    memoryProjectId,
+    setMemoryProjectId,
+    retrieval,
+    memoryError,
+    memoryBrowser,
+    memoryBrowserState,
+    memoryBrowserError,
+    memoryReview,
+    memoryReviewState,
+    memoryReviewError,
+    runMemorySearch,
+    refreshMemoryBrowser,
+    refreshMemoryReview,
+    promoteReviewItem,
+    archiveReviewItem,
+    pinReviewItem,
+    forgetReviewItem,
+    appendCheckpointEvent,
+  } = memory;
 
-    let cancelled = false;
-    async function run() {
-      setSkillLifecycleState('loading');
-      setSkillLifecycleError(null);
-      try {
-        const skillId = lifecycleSkillId;
-        if (!skillId) {
-          return;
-        }
-        const lifecycle = await loadSkillLifecycle(skillId);
-        if (cancelled) {
-          return;
-        }
-        setSkillLifecycle(lifecycle);
-        setSkillLifecycleState('ready');
-      } catch (error) {
-        if (cancelled) {
-          return;
-        }
-        setSkillLifecycleError(error instanceof Error ? error.message : 'Failed to load skill lifecycle');
-        setSkillLifecycleState('error');
-      }
-    }
+  const {
+    crudKind,
+    setCrudKind,
+    crudSelectionId,
+    setCrudSelectionId,
+    crudDraft,
+    setCrudDraft,
+    crudState,
+    crudError,
+    saveCrudItem,
+    deleteCrudItem,
+    startNewCrudItem,
+  } = crud;
 
-    void run();
-    setSkillTestScenario(`Inspect ${selectedSkillName} against its described workflow.`);
-    setSkillTestExpectedOutcome(`The ${selectedSkillName} skill should resolve the workflow with a passing lifecycle score.`);
+  const {
+    policyState,
+    policyError,
+    savePolicyMode,
+    resolveApproval,
+    policyEntityType,
+    setPolicyEntityType,
+    policyEntityId,
+    setPolicyEntityId,
+    policyEntityItems,
+    policyEntityMode,
+    setPolicyEntityMode,
+    policyEntityBias,
+    setPolicyEntityBias,
+    policyEntityKillSwitch,
+    setPolicyEntityKillSwitch,
+    policyEntityState,
+    policyEntityError,
+    saveEntityPolicy,
+  } = policy;
 
-    return () => {
-      cancelled = true;
-    };
-  }, [crudKind, selectedSkillId, selectedSkillName]);
-
-  async function appendCheckpointEvent() {
-    await appendEvent({
-      type: eventDraft,
-      source: 'desktop-shell',
-      payload: {
-        section: activeSection,
-        task_id: selectedTask.id,
-        agent_id: selectedAgent.id
-      }
-    });
-
-    const nextSnapshot = await refreshSnapshot();
-    setSnapshot(nextSnapshot);
-    setActiveTab('Logs');
-    await runMemorySearch(memoryQuery, memoryRole, memoryScope, memoryProjectId);
-  }
-
-  function renderMemoryBrowserCards(
-    title: string,
-    hint: string,
-    items: Array<
-      MemoryItem & {
-        score?: number;
-        reason?: string | null;
-        recommended_action?: string | null;
-        review_reason?: string | null;
-      }
-    >,
-    emptyMessage: string,
-  ) {
-    return (
-      <section className="memory-browser-group">
-        <div className="memory-browser-head">
-          <strong>{title}</strong>
-          <span>{items.length} items</span>
-        </div>
-        <p className="event-hint">{hint}</p>
-        <div className="stack compact">
-          {items.map((item) => (
-            <article key={item.id} className="memory-card">
-              <div className="memory-card-top">
-                <strong>{item.title}</strong>
-                <span>{item.layer} · {item.state}{item.pinned ? ' · pinned' : ''}</span>
-              </div>
-              <p>{item.summary}</p>
-              <div className="memory-meta">
-                <span>{item.scope}</span>
-                <span>{item.project_id ?? 'workspace'}</span>
-                <span>{item.confidence.toFixed(2)}</span>
-                <span>{item.freshness.toFixed(2)}</span>
-                {typeof item.score === 'number' ? <span>score {item.score.toFixed(2)}</span> : null}
-              </div>
-              {(item.review_reason || item.reason) && <p className="event-hint">{item.review_reason ?? item.reason}</p>}
-              <div className="crud-actions">
-                {item.state === 'candidate' ? (
-                  <button className="primary-action" onClick={() => void promoteReviewItem(item.id)}>
-                    Promote
-                  </button>
-                ) : null}
-                <button className="tab" onClick={() => void pinReviewItem(item.id)}>
-                  Pin
-                </button>
-                <button className="tab" onClick={() => void archiveReviewItem(item.id)}>
-                  Archive
-                </button>
-                <button className="tab" onClick={() => void forgetReviewItem(item.id)}>
-                  Forget
-                </button>
-              </div>
-            </article>
-          ))}
-          {items.length === 0 && <p>{emptyMessage}</p>}
-        </div>
-      </section>
-    );
-  }
+  const {
+    diagnosticsQuery,
+    setDiagnosticsQuery,
+    diagnosticsStatus,
+    setDiagnosticsStatus,
+    diagnosticsApprovalRequired,
+    setDiagnosticsApprovalRequired,
+    diagnosticsProjectId,
+    setDiagnosticsProjectId,
+    diagnosticsProjectThreadId,
+    setDiagnosticsProjectThreadId,
+    diagnosticsChatSessionId,
+    setDiagnosticsChatSessionId,
+    diagnosticsRuns,
+    diagnosticsState,
+    diagnosticsError,
+    replayRunId,
+    setReplayRunId,
+    replayState,
+    replayError,
+    replayAgentGroups,
+    refreshDiagnosticsRuns,
+    loadRunReplay,
+  } = replay;
+  const replayData = replay.replay;
+  const executeSchedule = schedules.executeSchedule;
+  const retryRun = schedules.retryRun;
+  const {
+    skillLifecycle,
+    skillLifecycleError,
+    skillTestScenario,
+    setSkillTestScenario,
+    skillTestExpectedOutcome,
+    setSkillTestExpectedOutcome,
+    refreshSkillLifecycle,
+    createLearnedSkillDraft,
+    runSkillTest,
+    promoteSelectedSkill,
+    rollbackSelectedSkill,
+  } = skills;
 
   return (
     <div className="shell">
@@ -1300,8 +517,8 @@ export default function App() {
                 title="Create project"
                 onClick={() => {
                   setActiveSection('Projects');
-                  setCrudKind('projects');
-                  startNewCrudItem();
+                  crud.setCrudKind('projects');
+                  crud.startNewCrudItem();
                 }}
               >
                 +
@@ -1311,9 +528,9 @@ export default function App() {
               value={selectedProject?.id ?? ''}
               onChange={(event) => {
                 const nextProjectId = event.target.value;
-                setMemoryProjectId(nextProjectId);
-                setPolicyEntityType('project');
-                setPolicyEntityId(nextProjectId);
+                memory.setMemoryProjectId(nextProjectId);
+                policy.setPolicyEntityType('project');
+                policy.setPolicyEntityId(nextProjectId);
               }}
             >
               {projectSwitcherOptions.map((project) => (
@@ -1412,22 +629,23 @@ export default function App() {
             tasks={snapshot.tasks}
             projects={snapshot.projects}
             selectedTaskId={workspaceTaskSelectionId}
-            taskDraft={crudKind === 'tasks' ? crudDraft : buildCrudDraft('tasks', selectedTask)}
-            crudState={crudState}
-            crudError={crudKind === 'tasks' ? crudError : null}
+            taskDraft={crud.crudKind === 'tasks' ? crud.crudDraft : buildCrudDraft(selectedTask)}
+            crudState={crud.crudState}
+            crudError={crud.crudKind === 'tasks' ? crud.crudError : null}
             onSelectTask={(taskId) => {
-              setCrudKind('tasks');
-              setCrudSelectionId(taskId);
+              crud.setCrudKind('tasks');
+              crud.setCrudSelectionId(taskId);
               setActiveTask(taskId);
+              setOrchestrationTaskId(taskId);
             }}
             onCreateTask={() => {
-              setCrudKind('tasks');
+              crud.setCrudKind('tasks');
               setActiveTask(snapshot.tasks[0]?.id ?? fallbackSnapshot.tasks[0].id);
-              startNewCrudItem();
+              crud.startNewCrudItem();
             }}
-            onTaskDraftChange={(field, value) => setCrudDraft((prev) => ({ ...prev, [field]: value }))}
-            onSaveTask={() => void saveCrudItem()}
-            onDeleteTask={() => void deleteCrudItem()}
+            onTaskDraftChange={(field, value) => crud.setCrudDraft((prev) => ({ ...prev, [field]: value }))}
+            onSaveTask={() => void crud.saveCrudItem()}
+            onDeleteTask={() => void crud.deleteCrudItem()}
             onOpenChat={(prompt) => {
               setActiveSection('Chat');
               setLaunchObjective(prompt);
@@ -1445,19 +663,19 @@ export default function App() {
             entityPolicies={snapshot.entity_policies}
             selectedProjectId={workspaceProjectSelectionId}
             activeThreadId={activeProjectThreadId}
-            projectDraft={crudKind === 'projects' ? crudDraft : buildCrudDraft('projects', selectedProject)}
-            crudState={crudState}
-            crudError={crudKind === 'projects' ? crudError : null}
+            projectDraft={crud.crudKind === 'projects' ? crud.crudDraft : buildCrudDraft(selectedProject)}
+            crudState={crud.crudState}
+            crudError={crud.crudKind === 'projects' ? crud.crudError : null}
             onSelectProject={(projectId) => {
-              setCrudKind('projects');
-              setCrudSelectionId(projectId);
-              setMemoryProjectId(projectId);
-              setPolicyEntityType('project');
-              setPolicyEntityId(projectId);
+              crud.setCrudKind('projects');
+              crud.setCrudSelectionId(projectId);
+              memory.setMemoryProjectId(projectId);
+              policy.setPolicyEntityType('project');
+              policy.setPolicyEntityId(projectId);
             }}
             onCreateProject={() => {
-              setCrudKind('projects');
-              startNewCrudItem();
+              crud.setCrudKind('projects');
+              crud.startNewCrudItem();
             }}
             onSelectThread={(threadId) => setActiveProjectThreadId(threadId)}
             onCreateThread={() => {
@@ -1471,14 +689,13 @@ export default function App() {
                   summary: 'Project-scoped execution thread',
                   status: 'Open'
                 });
-                const nextSnapshot = await refreshSnapshot();
-                setSnapshot(nextSnapshot);
+                await refreshSnapshot();
                 setActiveProjectThreadId(created.id);
               })();
             }}
-            onProjectDraftChange={(field, value) => setCrudDraft((prev) => ({ ...prev, [field]: value }))}
-            onSaveProject={() => void saveCrudItem()}
-            onDeleteProject={() => void deleteCrudItem()}
+            onProjectDraftChange={(field, value) => crud.setCrudDraft((prev) => ({ ...prev, [field]: value }))}
+            onSaveProject={() => void crud.saveCrudItem()}
+            onDeleteProject={() => void crud.deleteCrudItem()}
           />
         ) : activeSection === 'Sessions' ? (
           <SessionsWorkspace
@@ -1497,7 +714,7 @@ export default function App() {
             replayRunId={replayRunId}
             replayTaskRunId={replayTaskRunId}
             replayHistoryRuns={replayHistoryRuns}
-            replay={replay}
+            replay={replayData}
             replayError={replayError}
             replayAgentGroups={replayAgentGroups}
             selectedProjectName={selectedProject?.name ?? null}
@@ -1519,71 +736,71 @@ export default function App() {
             agents={snapshot.agents}
             agentRuns={snapshot.agent_runs}
             selectedAgentId={workspaceAgentSelectionId}
-            agentDraft={crudKind === 'agents' ? crudDraft : buildCrudDraft('agents', snapshot.agents[0] ?? fallbackSnapshot.agents[0])}
-            crudState={crudState}
-            crudError={crudKind === 'agents' ? crudError : null}
+            agentDraft={crud.crudKind === 'agents' ? crud.crudDraft : buildCrudDraft(snapshot.agents[0] ?? fallbackSnapshot.agents[0])}
+            crudState={crud.crudState}
+            crudError={crud.crudKind === 'agents' ? crud.crudError : null}
             onSelectAgent={(agentId) => {
-              setCrudKind('agents');
-              setCrudSelectionId(agentId);
+              crud.setCrudKind('agents');
+              crud.setCrudSelectionId(agentId);
             }}
             onCreateAgent={() => {
-              setCrudKind('agents');
-              startNewCrudItem();
+              crud.setCrudKind('agents');
+              crud.startNewCrudItem();
             }}
-            onAgentDraftChange={(field, value) => setCrudDraft((prev) => ({ ...prev, [field]: value }))}
-            onSaveAgent={() => void saveCrudItem()}
-            onDeleteAgent={() => void deleteCrudItem()}
+            onAgentDraftChange={(field, value) => crud.setCrudDraft((prev) => ({ ...prev, [field]: value }))}
+            onSaveAgent={() => void crud.saveCrudItem()}
+            onDeleteAgent={() => void crud.deleteCrudItem()}
           />
         ) : activeSection === 'Skills' ? (
           <SkillsWorkspace
             skills={snapshot.skills}
             projects={snapshot.projects}
             selectedSkillId={workspaceSkillSelectionId}
-            skillDraft={crudKind === 'skills' ? crudDraft : buildCrudDraft('skills', selectedSkill)}
-            crudState={crudState}
-            crudError={crudKind === 'skills' ? crudError : null}
-            lifecycle={skillLifecycle}
-            lifecycleError={skillLifecycleError}
-            skillTestScenario={skillTestScenario}
-            skillTestExpectedOutcome={skillTestExpectedOutcome}
+            skillDraft={crud.crudKind === 'skills' ? crud.crudDraft : buildCrudDraft(selectedSkill)}
+            crudState={crud.crudState}
+            crudError={crud.crudKind === 'skills' ? crud.crudError : null}
+            lifecycle={skills.skillLifecycle}
+            lifecycleError={skills.skillLifecycleError}
+            skillTestScenario={skills.skillTestScenario}
+            skillTestExpectedOutcome={skills.skillTestExpectedOutcome}
             onSelectSkill={(skillId) => {
-              setCrudKind('skills');
-              setCrudSelectionId(skillId);
+              crud.setCrudKind('skills');
+              crud.setCrudSelectionId(skillId);
             }}
             onCreateSkill={() => {
-              setCrudKind('skills');
-              startNewCrudItem();
+              crud.setCrudKind('skills');
+              crud.startNewCrudItem();
             }}
-            onSkillDraftChange={(field, value) => setCrudDraft((prev) => ({ ...prev, [field]: value }))}
-            onSaveSkill={() => void saveCrudItem()}
-            onDeleteSkill={() => void deleteCrudItem()}
+            onSkillDraftChange={(field, value) => crud.setCrudDraft((prev) => ({ ...prev, [field]: value }))}
+            onSaveSkill={() => void crud.saveCrudItem()}
+            onDeleteSkill={() => void crud.deleteCrudItem()}
             onRefreshLifecycle={() => {
               if (workspaceSkillSelectionId) {
-                void refreshSkillLifecycle(workspaceSkillSelectionId);
+                void skills.refreshSkillLifecycle(workspaceSkillSelectionId);
               }
             }}
             onCreateLearnedDraft={() => {
               if (workspaceSkillSelectionId) {
-                void createLearnedSkillDraft(workspaceSkillSelectionId);
+                void skills.createLearnedSkillDraft(workspaceSkillSelectionId);
               }
             }}
             onRunTest={() => {
               if (workspaceSkillSelectionId) {
-                void runSkillTest(workspaceSkillSelectionId);
+                void skills.runSkillTest(workspaceSkillSelectionId);
               }
             }}
             onPromote={() => {
               if (workspaceSkillSelectionId) {
-                void promoteSelectedSkill(workspaceSkillSelectionId);
+                void skills.promoteSelectedSkill(workspaceSkillSelectionId);
               }
             }}
             onRollback={() => {
               if (workspaceSkillSelectionId) {
-                void rollbackSelectedSkill(workspaceSkillSelectionId);
+                void skills.rollbackSelectedSkill(workspaceSkillSelectionId);
               }
             }}
-            onSkillTestScenarioChange={setSkillTestScenario}
-            onSkillTestExpectedOutcomeChange={setSkillTestExpectedOutcome}
+            onSkillTestScenarioChange={skills.setSkillTestScenario}
+            onSkillTestExpectedOutcomeChange={skills.setSkillTestExpectedOutcome}
           />
         ) : activeSection === 'Scheduled' ? (
           <ScheduledWorkspace
@@ -1595,8 +812,8 @@ export default function App() {
             chatSessions={snapshot.chat_sessions}
             selectedSchedule={selectedSchedule}
             latestScheduleRun={latestScheduleRun}
-            onRunSchedule={(scheduleId) => void executeSchedule(scheduleId)}
-            onRetryRun={(runId) => void retryRun(runId)}
+            onRunSchedule={(scheduleId) => void schedules.executeSchedule(scheduleId)}
+            onRetryRun={(runId) => void schedules.retryRun(runId)}
             onInspectRun={(runId) => void loadRunReplay(runId)}
           />
         ) : activeSection === 'Settings' ? (
@@ -1606,37 +823,26 @@ export default function App() {
             selectedProjectPolicy={selectedProjectPolicy}
             effectivePolicy={effectivePolicy}
             pendingApprovals={pendingApprovals}
-            policyState={policyState}
-            policyError={policyError}
+            policyState={policy.policyState}
+            policyError={policy.policyError}
             workspaceMode={snapshot.workspace.autonomy_mode}
             workspaceKillSwitch={snapshot.workspace.kill_switch}
-            onWorkspaceModeChange={(value) => void savePolicyMode(value, snapshot.workspace.kill_switch)}
-            onWorkspaceKillSwitchToggle={() => void savePolicyMode(snapshot.workspace.autonomy_mode, !snapshot.workspace.kill_switch)}
-            policyEntityType={policyEntityType}
-            policyEntityId={policyEntityId}
-            policyEntityItems={policyEntityItems}
-            policyEntityMode={policyEntityMode}
-            policyEntityBias={policyEntityBias}
-            policyEntityKillSwitch={policyEntityKillSwitch}
-            policyEntityState={policyEntityState}
-            policyEntityError={policyEntityError}
-            onPolicyEntityTypeChange={(nextType) => {
-              setPolicyEntityType(nextType);
-              const nextId =
-                nextType === 'task'
-                  ? snapshot.tasks[0]?.id ?? ''
-                  : nextType === 'project'
-                    ? snapshot.projects[0]?.id ?? ''
-                    : nextType === 'skill'
-                      ? snapshot.skills[0]?.id ?? ''
-                      : snapshot.schedules[0]?.id ?? '';
-              setPolicyEntityId(nextId);
-            }}
-            onPolicyEntityIdChange={setPolicyEntityId}
-            onPolicyEntityModeChange={setPolicyEntityMode}
-            onPolicyEntityBiasChange={setPolicyEntityBias}
-            onPolicyEntityKillSwitchChange={setPolicyEntityKillSwitch}
-            onSaveEntityPolicy={() => void saveEntityPolicy()}
+            onWorkspaceModeChange={(value) => void policy.savePolicyMode(value, snapshot.workspace.kill_switch)}
+            onWorkspaceKillSwitchToggle={() => void policy.savePolicyMode(snapshot.workspace.autonomy_mode, !snapshot.workspace.kill_switch)}
+            policyEntityType={policy.policyEntityType}
+            policyEntityId={policy.policyEntityId}
+            policyEntityItems={policy.policyEntityItems}
+            policyEntityMode={policy.policyEntityMode}
+            policyEntityBias={policy.policyEntityBias}
+            policyEntityKillSwitch={policy.policyEntityKillSwitch}
+            policyEntityState={policy.policyEntityState}
+            policyEntityError={policy.policyEntityError}
+            onPolicyEntityTypeChange={policy.setPolicyEntityType}
+            onPolicyEntityIdChange={policy.setPolicyEntityId}
+            onPolicyEntityModeChange={policy.setPolicyEntityMode}
+            onPolicyEntityBiasChange={policy.setPolicyEntityBias}
+            onPolicyEntityKillSwitchChange={policy.setPolicyEntityKillSwitch}
+            onSaveEntityPolicy={() => void policy.saveEntityPolicy()}
           />
         ) : (
           <>
@@ -2092,7 +1298,7 @@ export default function App() {
                       return;
                     }
                     const nextItem = activeCrudItems.find((item) => item.id === nextSelection);
-                    setCrudDraft(nextItem ? buildCrudDraft(crudKind, nextItem) : {});
+                    setCrudDraft(nextItem ? buildCrudDraft(nextItem) : {});
                   }}
                 >
                   <option value={NEW_ITEM_SENTINEL}>Create new</option>
@@ -2460,30 +1666,46 @@ export default function App() {
           {memoryBrowserError && <p className="error-banner">{memoryBrowserError}</p>}
           {memoryBrowserState === 'ready' && memoryBrowser && (
             <div className="memory-browser-grid">
-              {renderMemoryBrowserCards(
-                'Daily memories',
-                'Recent daily rollups from personal sessions and short-term continuity.',
-                memoryBrowser.daily_memories,
-                'No daily memories matched this filter.',
-              )}
-              {renderMemoryBrowserCards(
-                'Long-term memory',
-                'Validated memories the agent can rely on across sessions and workflows.',
-                memoryBrowser.long_term_memories,
-                'No long-term memories matched this filter.',
-              )}
-              {renderMemoryBrowserCards(
-                'Pinned memory',
-                'Protected memories that should stay easy to retrieve and hard to lose.',
-                memoryBrowser.pinned_memories,
-                'No pinned memories matched this filter.',
-              )}
-              {renderMemoryBrowserCards(
-                'Candidate queue',
-                'New or uncertain memories waiting for promotion, curation, or removal.',
-                memoryBrowser.candidate_memories,
-                'No candidate memories matched this filter.',
-              )}
+              <MemoryBrowserGroup
+                title="Daily memories"
+                hint="Recent daily rollups from personal sessions and short-term continuity."
+                items={memoryBrowser.daily_memories}
+                emptyMessage="No daily memories matched this filter."
+                onPromote={(itemId) => void promoteReviewItem(itemId)}
+                onPin={(itemId) => void pinReviewItem(itemId)}
+                onArchive={(itemId) => void archiveReviewItem(itemId)}
+                onForget={(itemId) => void forgetReviewItem(itemId)}
+              />
+              <MemoryBrowserGroup
+                title="Long-term memory"
+                hint="Validated memories the agent can rely on across sessions and workflows."
+                items={memoryBrowser.long_term_memories}
+                emptyMessage="No long-term memories matched this filter."
+                onPromote={(itemId) => void promoteReviewItem(itemId)}
+                onPin={(itemId) => void pinReviewItem(itemId)}
+                onArchive={(itemId) => void archiveReviewItem(itemId)}
+                onForget={(itemId) => void forgetReviewItem(itemId)}
+              />
+              <MemoryBrowserGroup
+                title="Pinned memory"
+                hint="Protected memories that should stay easy to retrieve and hard to lose."
+                items={memoryBrowser.pinned_memories}
+                emptyMessage="No pinned memories matched this filter."
+                onPromote={(itemId) => void promoteReviewItem(itemId)}
+                onPin={(itemId) => void pinReviewItem(itemId)}
+                onArchive={(itemId) => void archiveReviewItem(itemId)}
+                onForget={(itemId) => void forgetReviewItem(itemId)}
+              />
+              <MemoryBrowserGroup
+                title="Candidate queue"
+                hint="New or uncertain memories waiting for promotion, curation, or removal."
+                items={memoryBrowser.candidate_memories}
+                emptyMessage="No candidate memories matched this filter."
+                onPromote={(itemId) => void promoteReviewItem(itemId)}
+                onPin={(itemId) => void pinReviewItem(itemId)}
+                onArchive={(itemId) => void archiveReviewItem(itemId)}
+                onForget={(itemId) => void forgetReviewItem(itemId)}
+              />
               <section className="memory-browser-group memory-browser-group-wide">
                 <div className="memory-browser-head">
                   <strong>Contradictions</strong>
@@ -2652,7 +1874,14 @@ export default function App() {
           <div className="panel-title">Write to event log</div>
           <div className="event-controls">
             <input value={eventDraft} onChange={(event) => setEventDraft(event.target.value)} aria-label="Event type" />
-            <button className="primary-action" onClick={() => void appendCheckpointEvent()}>
+            <button
+              className="primary-action"
+              onClick={() => void appendCheckpointEvent({
+                section: activeSection,
+                task_id: selectedTask.id,
+                agent_id: selectedAgent.id,
+              })}
+            >
               Record event
             </button>
           </div>
@@ -2673,7 +1902,7 @@ export default function App() {
           replayRunId={replayRunId}
           replayTaskRunId={replayTaskRunId}
           replayHistoryRuns={replayHistoryRuns}
-          replay={replay}
+          replay={replayData}
           replayState={replayState}
           replayError={replayError}
           replayAgentGroups={replayAgentGroups}

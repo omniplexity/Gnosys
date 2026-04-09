@@ -1,4 +1,5 @@
 import type { AgentRun, ChatAttachment, ChatContextMode, ChatMessage, ChatSession, MemoryBrowseResult, MemoryItem, OrchestrationDecision, OrchestrationStep, ProjectThread, Skill, Task, TaskRun, WorkspaceSnapshot } from '@gnosys/shared';
+import { readErrorDetail } from './lib/errors';
 
 export type MemoryRetrievalResult = {
   query: string;
@@ -138,21 +139,6 @@ export type SkillLifecycleResponse = {
   lifecycle_state: string;
   ready_for_promotion: boolean;
 };
-
-async function readErrorDetail(response: Response, fallback: string): Promise<string> {
-  try {
-    const body = (await response.json()) as { detail?: { message?: string } | string };
-    if (typeof body.detail === 'string') {
-      return body.detail;
-    }
-    if (body.detail && typeof body.detail.message === 'string') {
-      return body.detail.message;
-    }
-  } catch {
-    return fallback;
-  }
-  return fallback;
-}
 
 async function requestJson<T>(url: string, fallback: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);

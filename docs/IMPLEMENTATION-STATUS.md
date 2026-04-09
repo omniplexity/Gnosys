@@ -171,19 +171,21 @@ Still missing:
 
 ### Desktop UX
 
-Status: materially better, still transitional.
+Status: materially better, with frontend modularization underway.
 
 Live now:
 
 - darker default shell
 - stronger chat presentation
 - Lucide icon usage in the primary chat surface
+- centralized desktop API/error helpers
+- hook-based frontend state extraction underway for workspace snapshot, orchestration, chat, memory, policy, CRUD, schedules, replay, and skill lifecycle
 
 Still missing:
 
 - dedicated personal-session switching/new-session UX
 - memory browser UI
-- cleaner composition boundaries in `App.tsx`
+- further decomposition of `App.tsx` render structure into focused shell components
 
 ## Current label
 
