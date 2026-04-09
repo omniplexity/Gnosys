@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 
 from ..deps import AppServices, get_services
-from ..models import SkillCreateRequest, SkillLifecycleRecord, SkillRecord, SkillTestRequest, SkillTestRunRecord, SkillUpdateRequest
+from ..models import SkillCreateRequest, SkillEvidenceRecord, SkillLearnRequest, SkillLearnResponse, SkillLifecycleRecord, SkillRecord, SkillTestRequest, SkillTestRunRecord, SkillUpdateRequest
 
 
 router = APIRouter()
@@ -17,7 +17,17 @@ def skills(services: AppServices = Depends(get_services)) -> list[SkillRecord]:
 @router.post("/api/skills", response_model=SkillRecord, status_code=201)
 def create_skill(payload: SkillCreateRequest, services: AppServices = Depends(get_services)) -> SkillRecord:
     services.gate_mutation(action="skill.create", subject_type="skill", subject_ref=payload.name, payload=payload.model_dump(), project_id=payload.project_id)
-    skill = services.store.create_skill(name=payload.name, description=payload.description, scope=payload.scope, version=payload.version, source_type=payload.source_type, status=payload.status, project_id=payload.project_id)
+    skill = services.store.create_skill(
+        name=payload.name,
+        description=payload.description,
+        scope=payload.scope,
+        version=payload.version,
+        source_type=payload.source_type,
+        status=payload.status,
+        project_id=payload.project_id,
+        provenance_summary=payload.provenance_summary,
+        invocation_hints=payload.invocation_hints,
+    )
     services.store.record_event(event_type="skill.created", source="ui", payload={"skill_id": skill["id"], "name": skill["name"]})
     return SkillRecord(**skill)
 
@@ -37,7 +47,24 @@ def update_skill(skill_id: str, payload: SkillUpdateRequest, services: AppServic
         raise HTTPException(status_code=404, detail="Skill not found")
     project_id = services.resolve_optional_project_id(payload, existing)
     services.gate_mutation(action="skill.update", subject_type="skill", subject_ref=skill_id, payload=payload.model_dump(), project_id=project_id)
-    skill = services.store.update_skill(skill_id, name=payload.name, description=payload.description, scope=payload.scope, version=payload.version, source_type=payload.source_type, status=payload.status, project_id=project_id)
+    skill = services.store.update_skill(
+        skill_id,
+        name=payload.name,
+        description=payload.description,
+        scope=payload.scope,
+        version=payload.version,
+        source_type=payload.source_type,
+        status=payload.status,
+        project_id=project_id,
+        provenance_summary=payload.provenance_summary,
+        evidence_count=payload.evidence_count,
+        success_signals=payload.success_signals,
+        invocation_hints=payload.invocation_hints,
+        promotion_summary=payload.promotion_summary,
+        rollback_summary=payload.rollback_summary,
+        last_promoted_at=payload.last_promoted_at,
+        last_rolled_back_at=payload.last_rolled_back_at,
+    )
     services.store.record_event(event_type="skill.updated", source="ui", payload={"skill_id": skill_id, "status": skill["status"]})
     return SkillRecord(**skill)
 
@@ -83,6 +110,26 @@ def improve_skill(skill_id: str, requested_by: str = "ui", services: AppServices
     return SkillRecord(**services.skill_engine.improve_skill(skill_id, requested_by=requested_by))
 
 
+@router.post("/api/skills/learn", response_model=SkillLearnResponse, status_code=201)
+def learn_skills(payload: SkillLearnRequest, services: AppServices = Depends(get_services)) -> SkillLearnResponse:
+    services.gate_mutation(
+        action="skill.learn",
+        subject_type="skill-library",
+        subject_ref="workspace",
+        payload=payload.model_dump(),
+        requested_by=payload.requested_by,
+    )
+    if services.skill_learning_service is None:
+        raise HTTPException(status_code=503, detail="Skill learning service unavailable")
+    result = services.skill_learning_service.extract_from_recent_runs(requested_by=payload.requested_by, limit=payload.limit)
+    return SkillLearnResponse(
+        created_skills=[SkillRecord(**skill) for skill in result.created_skills],
+        analyzed_runs=result.analyzed_runs,
+        repeated_patterns=result.repeated_patterns,
+        skipped_patterns=result.skipped_patterns,
+    )
+
+
 @router.post("/api/skills/{skill_id}/test", response_model=SkillTestRunRecord, status_code=201)
 def test_skill(skill_id: str, payload: SkillTestRequest, services: AppServices = Depends(get_services)) -> SkillTestRunRecord:
     existing = services.store.get_skill(skill_id)
@@ -120,4 +167,5 @@ def skill_lifecycle(skill_id: str, services: AppServices = Depends(get_services)
         test_runs=[SkillTestRunRecord(**test_run) for test_run in lifecycle.test_runs],
         lifecycle_state=lifecycle.lifecycle_state,
         ready_for_promotion=lifecycle.ready_for_promotion,
+        evidence=[SkillEvidenceRecord(**evidence) for evidence in lifecycle.evidence],
     )

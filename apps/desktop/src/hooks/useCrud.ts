@@ -6,7 +6,7 @@ import { deleteCrudResource, saveCrudResource } from '../lib/api';
 import { toErrorMessage } from '../lib/errors';
 
 export type CrudKind = 'tasks' | 'projects' | 'agents' | 'skills' | 'schedules';
-export type CrudDraft = Record<string, string | boolean>;
+export type CrudDraft = Record<string, unknown>;
 
 export const NEW_ITEM_SENTINEL = '__new__';
 export const crudKinds: CrudKind[] = ['tasks', 'projects', 'agents', 'skills', 'schedules'];
@@ -30,7 +30,14 @@ export function buildCrudDraft(item: unknown): CrudDraft {
   if (!item || typeof item !== 'object') {
     return {};
   }
-  return { ...item } as CrudDraft;
+  const draft = { ...(item as Record<string, unknown>) };
+  if (Array.isArray(draft.invocation_hints)) {
+    draft.invocation_hints = draft.invocation_hints.join(', ');
+  }
+  if (Array.isArray(draft.success_signals)) {
+    draft.success_signals = draft.success_signals.join(', ');
+  }
+  return draft as CrudDraft;
 }
 
 export function normalizeCrudDraft(kind: CrudKind, draft: CrudDraft): Record<string, unknown> {
@@ -65,6 +72,11 @@ export function normalizeCrudDraft(kind: CrudKind, draft: CrudDraft): Record<str
         source_type: String(draft.source_type ?? 'authored'),
         status: String(draft.status ?? 'draft'),
         project_id: draft.project_id ? String(draft.project_id) : null,
+        provenance_summary: String(draft.provenance_summary ?? ''),
+        invocation_hints: String(draft.invocation_hints ?? '')
+          .split(',')
+          .map((hint) => hint.trim())
+          .filter(Boolean),
       };
     case 'schedules':
       return {

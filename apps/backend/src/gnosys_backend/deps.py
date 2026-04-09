@@ -9,6 +9,7 @@ from .memory import MemoryEngine
 from .models import PolicyDecisionRecord
 from .policy import PolicyEngine
 from .runtime import OrchestrationEngine
+from .services.skill_learning_service import SkillLearningService
 from .session_learning import SessionLearningEngine
 from .skills import SkillEngine
 from .store import GnosysStore
@@ -22,6 +23,7 @@ class AppServices:
     orchestration_engine: OrchestrationEngine
     policy_engine: PolicyEngine
     skill_engine: SkillEngine
+    skill_learning_service: SkillLearningService | None = None
     scheduler_service: Any | None = None
     approval_service: Any | None = None
     replay_service: Any | None = None

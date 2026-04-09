@@ -107,6 +107,8 @@ export interface OrchestrationDecision {
   execution_mode: 'answer-only' | 'task-created';
   delegated_specialists: string[];
   invoked_skills: string[];
+  candidate_skills?: string[];
+  routing_notes?: string[];
   approvals_triggered: boolean;
   synthesis: string;
 }
@@ -122,12 +124,32 @@ export interface Skill {
   scope: 'workspace' | 'project' | 'session' | 'user';
   version: string;
   source_type: 'authored' | 'learned';
-  status: 'draft' | 'active' | 'archived';
+  status: 'draft' | 'candidate' | 'active' | 'deprecated' | 'archived';
   test_status?: 'untested' | 'passed' | 'failed';
   test_score?: number;
   test_summary?: string;
+  provenance_summary?: string;
+  evidence_count?: number;
+  success_signals?: string[];
+  invocation_hints?: string[];
+  promotion_summary?: string;
+  rollback_summary?: string;
+  last_promoted_at?: string | null;
+  last_rolled_back_at?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface SkillEvidence {
+  id: string;
+  skill_id: string;
+  task_run_id?: string | null;
+  agent_run_id?: string | null;
+  source_kind: string;
+  pattern_signature: string;
+  evidence_summary: string;
+  success_score: number;
+  created_at: string;
 }
 
 export interface Schedule {

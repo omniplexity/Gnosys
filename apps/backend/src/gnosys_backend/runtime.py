@@ -48,9 +48,9 @@ class OrchestrationResult:
 
 
 class OrchestrationEngine:
-    def __init__(self, store: GnosysStore) -> None:
+    def __init__(self, store: GnosysStore, skill_engine: SkillEngine | None = None) -> None:
         self.store = store
-        self.skill_engine = SkillEngine(store)
+        self.skill_engine = skill_engine or SkillEngine(store)
 
     def launch(
         self,
@@ -88,10 +88,14 @@ class OrchestrationEngine:
             approval_required = policy_decision.requires_approval
         intent_classification = self._classify_intent(objective)
         steps = self._build_steps(objective, intent_classification=intent_classification)
-        invoked_skills = self.skill_engine.find_matching_skills(objective, project_id=project_id, limit=3)
+        routing_context = self.skill_engine.find_routing_context(objective, project_id=project_id, limit=3)
+        invoked_skills = routing_context["active"]
         invoked_skill_names = [str(skill["name"]) for skill in invoked_skills]
+        candidate_skill_names = [str(skill["name"]) for skill in routing_context["candidates"]]
         if invoked_skill_names:
             steps = self._apply_skill_guidance(steps, invoked_skill_names)
+        if candidate_skill_names:
+            steps = self._apply_candidate_guidance(steps, candidate_skill_names)
         summary = self._summarize_run(objective, steps, approval_required)
 
         task_run = self.store.create_task_run(
@@ -261,6 +265,8 @@ class OrchestrationEngine:
                 "delegated_specialists": delegated_specialists,
                 "intent_classification": intent_classification,
                 "invoked_skills": invoked_skill_names,
+                "candidate_skills": candidate_skill_names,
+                "routing_notes": routing_context["notes"],
             },
         )
 
@@ -269,6 +275,8 @@ class OrchestrationEngine:
             "execution_mode": "task-created",
             "delegated_specialists": delegated_specialists,
             "invoked_skills": invoked_skill_names,
+            "candidate_skills": candidate_skill_names,
+            "routing_notes": routing_context["notes"],
             "approvals_triggered": approval_required,
             "synthesis": self._build_synthesis(
                 objective,
@@ -276,6 +284,7 @@ class OrchestrationEngine:
                 approval_required,
                 worker_count,
                 invoked_skill_names,
+                candidate_skill_names,
             ),
         }
 
@@ -417,6 +426,17 @@ class OrchestrationEngine:
             guided_steps.append(updated)
         return guided_steps
 
+    def _apply_candidate_guidance(self, steps: list[dict[str, Any]], candidate_skill_names: list[str]) -> list[dict[str, Any]]:
+        guidance = ", ".join(candidate_skill_names)
+        guided_steps: list[dict[str, Any]] = []
+        for step in steps:
+            updated = dict(step)
+            updated["rationale"] = (
+                f"{step['rationale']} Learned candidates worth validating during execution: {guidance}."
+            )
+            guided_steps.append(updated)
+        return guided_steps
+
     def _build_synthesis(
         self,
         objective: str,
@@ -424,6 +444,7 @@ class OrchestrationEngine:
         approval_required: bool,
         worker_count: int,
         invoked_skills: list[str],
+        candidate_skills: list[str],
     ) -> str:
         specialist_summary = ", ".join(delegated_specialists) if delegated_specialists else "the fixed specialist team"
         state = "awaiting approval" if approval_required else "active"
@@ -431,6 +452,8 @@ class OrchestrationEngine:
         skill_summary = ""
         if invoked_skills:
             skill_summary = f" Active skills in play: {', '.join(invoked_skills)}."
+        elif candidate_skills:
+            skill_summary = f" Learned candidates available for validation: {', '.join(candidate_skills)}."
         return (
             f"Master agent routed this request through {specialist_summary}. "
             f"The execution plan is {state} and currently fans out to {worker_summary} where bounded delivery helps."

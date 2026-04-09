@@ -761,6 +761,7 @@ export default function App() {
             crudError={crud.crudKind === 'skills' ? crud.crudError : null}
             lifecycle={skills.skillLifecycle}
             lifecycleError={skills.skillLifecycleError}
+            learningSummary={skills.skillLearningSummary}
             skillTestScenario={skills.skillTestScenario}
             skillTestExpectedOutcome={skills.skillTestExpectedOutcome}
             onSelectSkill={(skillId) => {
@@ -783,6 +784,9 @@ export default function App() {
               if (workspaceSkillSelectionId) {
                 void skills.createLearnedSkillDraft(workspaceSkillSelectionId);
               }
+            }}
+            onLearnFromRuns={() => {
+              void skills.learnSkillsFromRuns();
             }}
             onRunTest={() => {
               if (workspaceSkillSelectionId) {

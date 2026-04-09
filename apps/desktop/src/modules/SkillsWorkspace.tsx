@@ -6,20 +6,27 @@ type SkillsWorkspaceProps = {
   skills: Skill[];
   projects: Project[];
   selectedSkillId: string;
-  skillDraft: Record<string, string | boolean>;
+  skillDraft: Record<string, unknown>;
   crudState: 'idle' | 'saving' | 'error';
   crudError: string | null;
   lifecycle: SkillLifecycleResponse | null;
   lifecycleError: string | null;
+  learningSummary: {
+    analyzed_runs: number;
+    repeated_patterns: number;
+    skipped_patterns: number;
+    created_skills: Skill[];
+  } | null;
   skillTestScenario: string;
   skillTestExpectedOutcome: string;
   onSelectSkill: (skillId: string) => void;
   onCreateSkill: () => void;
-  onSkillDraftChange: (field: string, value: string | boolean) => void;
+  onSkillDraftChange: (field: string, value: unknown) => void;
   onSaveSkill: () => void;
   onDeleteSkill: () => void;
   onRefreshLifecycle: () => void;
   onCreateLearnedDraft: () => void;
+  onLearnFromRuns: () => void;
   onRunTest: () => void;
   onPromote: () => void;
   onRollback: () => void;
@@ -36,6 +43,7 @@ export function SkillsWorkspace({
   crudError,
   lifecycle,
   lifecycleError,
+  learningSummary,
   skillTestScenario,
   skillTestExpectedOutcome,
   onSelectSkill,
@@ -45,6 +53,7 @@ export function SkillsWorkspace({
   onDeleteSkill,
   onRefreshLifecycle,
   onCreateLearnedDraft,
+  onLearnFromRuns,
   onRunTest,
   onPromote,
   onRollback,
@@ -70,6 +79,9 @@ export function SkillsWorkspace({
               </button>
               <button className="tab workspace-menu-button" onClick={onCreateLearnedDraft} disabled={!selectedSkill}>
                 Learned draft
+              </button>
+              <button className="tab workspace-menu-button" onClick={onLearnFromRuns}>
+                Learn from runs
               </button>
             </div>
           </details>
@@ -117,6 +129,7 @@ export function SkillsWorkspace({
                 <span>{String(skillDraft.scope ?? selectedSkill?.scope ?? 'workspace')}</span>
                 <span>{String(skillDraft.source_type ?? selectedSkill?.source_type ?? 'authored')}</span>
                 <span>{String(skillDraft.version ?? selectedSkill?.version ?? '0.1.0')}</span>
+                <span>{selectedSkill?.evidence_count ?? 0} evidence</span>
               </div>
             </div>
             <details className="workspace-inline-menu" open>
@@ -155,7 +168,9 @@ export function SkillsWorkspace({
                     Status
                     <select value={String(skillDraft.status ?? selectedSkill?.status ?? 'draft')} onChange={(event) => onSkillDraftChange('status', event.target.value)}>
                       <option>draft</option>
+                      <option>candidate</option>
                       <option>active</option>
+                      <option>deprecated</option>
                       <option>archived</option>
                     </select>
                   </label>
@@ -170,6 +185,24 @@ export function SkillsWorkspace({
                       ))}
                     </select>
                   </label>
+                  <label className="workspace-form-span">
+                    Provenance
+                    <textarea
+                      value={String(skillDraft.provenance_summary ?? selectedSkill?.provenance_summary ?? '')}
+                      onChange={(event) => onSkillDraftChange('provenance_summary', event.target.value)}
+                    />
+                  </label>
+                  <label className="workspace-form-span">
+                    Invocation hints
+                    <textarea
+                      value={String(
+                        skillDraft.invocation_hints ??
+                          selectedSkill?.invocation_hints?.join(', ') ??
+                          ''
+                      )}
+                      onChange={(event) => onSkillDraftChange('invocation_hints', event.target.value)}
+                    />
+                  </label>
                 </div>
               </div>
             </details>
@@ -183,6 +216,11 @@ export function SkillsWorkspace({
             </div>
             {crudError && <p className="error-banner">{crudError}</p>}
             {lifecycleError && <p className="error-banner">{lifecycleError}</p>}
+            {learningSummary && (
+              <p className="event-hint">
+                Learned {learningSummary.created_skills.length} skills from {learningSummary.analyzed_runs} analyzed runs across {learningSummary.repeated_patterns} repeated patterns.
+              </p>
+            )}
           </section>
 
           <section className="panel section-panel">
@@ -238,8 +276,36 @@ export function SkillsWorkspace({
                     <span>{lifecycle.skill.test_status}</span>
                     <span>{(lifecycle.skill.test_score ?? 0).toFixed(2)}</span>
                     <span>{lifecycle.parent_skill?.name ?? 'no parent skill'}</span>
+                    <span>{lifecycle.skill.evidence_count ?? 0} evidence</span>
                   </div>
                 </article>
+                {lifecycle.skill.provenance_summary && (
+                  <article className="run-node">
+                    <div className="run-node-top">
+                      <strong>Provenance</strong>
+                      <span>{lifecycle.skill.source_type}</span>
+                    </div>
+                    <p>{lifecycle.skill.provenance_summary}</p>
+                    <div className="run-node-meta">
+                      {(lifecycle.skill.success_signals ?? []).slice(0, 3).map((signal) => (
+                        <span key={signal}>{signal}</span>
+                      ))}
+                    </div>
+                  </article>
+                )}
+                {lifecycle.evidence.slice(0, 4).map((evidence) => (
+                  <article key={evidence.id} className="run-node">
+                    <div className="run-node-top">
+                      <strong>{evidence.source_kind}</strong>
+                      <span>{evidence.success_score.toFixed(2)}</span>
+                    </div>
+                    <p>{evidence.evidence_summary}</p>
+                    <div className="run-node-meta">
+                      <span>{evidence.pattern_signature}</span>
+                      <span>{evidence.task_run_id ?? evidence.agent_run_id ?? 'workspace run'}</span>
+                    </div>
+                  </article>
+                ))}
                 {lifecycle.test_runs.slice(0, 4).map((testRun) => (
                   <article key={testRun.id} className="run-node">
                     <div className="run-node-top">

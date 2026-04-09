@@ -149,6 +149,14 @@ class SkillListItem(BaseModel):
     test_status: str = "untested"
     test_score: float = 0.0
     test_summary: str = ""
+    provenance_summary: str = ""
+    evidence_count: int = 0
+    success_signals: list[str] = Field(default_factory=list)
+    invocation_hints: list[str] = Field(default_factory=list)
+    promotion_summary: str = ""
+    rollback_summary: str = ""
+    last_promoted_at: str | None = None
+    last_rolled_back_at: str | None = None
     created_at: str
     updated_at: str
 
@@ -294,6 +302,8 @@ class OrchestrationDecisionRecord(BaseModel):
     execution_mode: Literal["answer-only", "task-created"]
     delegated_specialists: list[str] = Field(default_factory=list)
     invoked_skills: list[str] = Field(default_factory=list)
+    candidate_skills: list[str] = Field(default_factory=list)
+    routing_notes: list[str] = Field(default_factory=list)
     approvals_triggered: bool = False
     synthesis: str
 
@@ -368,6 +378,14 @@ class SkillRecord(BaseModel):
     test_status: str = "untested"
     test_score: float = 0.0
     test_summary: str = ""
+    provenance_summary: str = ""
+    evidence_count: int = 0
+    success_signals: list[str] = Field(default_factory=list)
+    invocation_hints: list[str] = Field(default_factory=list)
+    promotion_summary: str = ""
+    rollback_summary: str = ""
+    last_promoted_at: str | None = None
+    last_rolled_back_at: str | None = None
     created_at: str
     updated_at: str
 
@@ -380,6 +398,8 @@ class SkillCreateRequest(BaseModel):
     source_type: str = Field(default="authored")
     status: str = Field(default="draft")
     project_id: str | None = None
+    provenance_summary: str = Field(default="")
+    invocation_hints: list[str] = Field(default_factory=list)
 
 
 class SkillUpdateRequest(BaseModel):
@@ -396,6 +416,14 @@ class SkillUpdateRequest(BaseModel):
     test_status: str | None = None
     test_score: float | None = None
     test_summary: str | None = None
+    provenance_summary: str | None = None
+    evidence_count: int | None = None
+    success_signals: list[str] | None = None
+    invocation_hints: list[str] | None = None
+    promotion_summary: str | None = None
+    rollback_summary: str | None = None
+    last_promoted_at: str | None = None
+    last_rolled_back_at: str | None = None
 
 
 class ScheduleRecord(BaseModel):
@@ -632,13 +660,38 @@ class SkillTestRunRecord(BaseModel):
     created_at: str
 
 
+class SkillEvidenceRecord(BaseModel):
+    id: str
+    skill_id: str
+    task_run_id: str | None = None
+    agent_run_id: str | None = None
+    source_kind: str
+    pattern_signature: str
+    evidence_summary: str
+    success_score: float
+    created_at: str
+
+
 class SkillLifecycleRecord(BaseModel):
     skill: SkillRecord
     parent_skill: SkillRecord | None = None
     related_skills: list[SkillRecord]
     test_runs: list[SkillTestRunRecord]
+    evidence: list[SkillEvidenceRecord] = Field(default_factory=list)
     lifecycle_state: str
     ready_for_promotion: bool
+
+
+class SkillLearnRequest(BaseModel):
+    limit: int = Field(default=12, ge=2, le=50)
+    requested_by: str = Field(default="ui")
+
+
+class SkillLearnResponse(BaseModel):
+    created_skills: list[SkillRecord]
+    analyzed_runs: int
+    repeated_patterns: int
+    skipped_patterns: int
 
 
 class SkillTestRequest(BaseModel):

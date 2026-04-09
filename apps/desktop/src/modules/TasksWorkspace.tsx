@@ -4,12 +4,12 @@ type TasksWorkspaceProps = {
   tasks: Task[];
   projects: Project[];
   selectedTaskId: string;
-  taskDraft: Record<string, string | boolean>;
+  taskDraft: Record<string, unknown>;
   crudState: 'idle' | 'saving' | 'error';
   crudError: string | null;
   onSelectTask: (taskId: string) => void;
   onCreateTask: () => void;
-  onTaskDraftChange: (field: string, value: string | boolean) => void;
+  onTaskDraftChange: (field: string, value: unknown) => void;
   onSaveTask: () => void;
   onDeleteTask: () => void;
   onOpenChat: (prompt: string) => void;

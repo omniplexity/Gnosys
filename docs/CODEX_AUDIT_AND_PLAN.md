@@ -82,3 +82,16 @@ Frontend maintainability work is now underway:
 - isolated rendering helpers are beginning to move into `apps/desktop/src/components/`
 
 This is still an incremental refactor. The goal is to preserve the current product behavior while making the desktop shell safer to evolve.
+
+## Phase 3 progress note
+
+Skill learning and recursive improvement now have a first governed foundation:
+
+- backend skill metadata now tracks provenance, evidence count, success signals, invocation hints, promotion notes, and rollback notes
+- learned execution evidence is persisted separately from authored skill definitions so source episodes stay inspectable
+- `services/skill_learning_service.py` can analyze repeated successful task runs and derive learned candidate skills with explicit provenance links
+- the skills API now exposes learned-skill extraction and lifecycle evidence without changing the broader workspace snapshot contract
+- orchestration keeps the current bounded routing behavior but now sees both active skills and candidate learned procedures as routing context
+- the desktop skills workspace now distinguishes learned lifecycle states and shows provenance/evidence metadata
+
+This remains governed learning rather than automatic mutation. Learned skills land as `candidate` records and still require explicit testing, promotion, or rollback decisions.

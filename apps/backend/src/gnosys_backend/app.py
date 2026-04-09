@@ -14,6 +14,7 @@ from .runtime import OrchestrationEngine
 from .services.approval_service import ApprovalService
 from .services.replay_service import ReplayService
 from .services.scheduler_service import ScheduleRunner, SchedulerService
+from .services.skill_learning_service import SkillLearningService
 from .session_learning import SessionLearningEngine
 from .skills import SkillEngine
 from .store import GnosysStore
@@ -45,9 +46,10 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
     active_store.initialize()
     memory_engine = MemoryEngine(active_store)
     session_learning = SessionLearningEngine(active_store, memory_engine)
-    orchestration_engine = OrchestrationEngine(active_store)
     policy_engine = PolicyEngine(active_store)
     skill_engine = SkillEngine(active_store)
+    orchestration_engine = OrchestrationEngine(active_store, skill_engine=skill_engine)
+    skill_learning_service = SkillLearningService(active_store)
 
     scheduler_service = SchedulerService(active_store, orchestration_engine)
     replay_service = ReplayService(active_store)
@@ -58,6 +60,7 @@ def create_app(store: GnosysStore | None = None) -> FastAPI:
         orchestration_engine=orchestration_engine,
         policy_engine=policy_engine,
         skill_engine=skill_engine,
+        skill_learning_service=skill_learning_service,
     )
     approval_service = ApprovalService(services)
     schedule_runner = ScheduleRunner(

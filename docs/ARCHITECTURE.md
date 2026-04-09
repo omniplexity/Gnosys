@@ -24,6 +24,7 @@ Backend implementation note:
 - route registration is now split across `routers/`
 - operational business logic is moving into `services/`
 - `app.py` should stay the composition root, not the place where scheduler, approval, replay, and diagnostics logic accumulates
+- the same rule now applies to skill learning: extraction, provenance, and routing seams belong in backend services rather than the app factory or router layer
 
 Implemented subsystems:
 
@@ -124,6 +125,7 @@ Runtime components:
 - Worker Runtime Layer
 - Execution Controller
 - Delegation Manager
+- Skill Routing Context
 
 Execution loop:
 
@@ -132,11 +134,12 @@ Execution loop:
 3. planner or other specialist decomposes work
 4. specialists retrieve scoped context
 5. specialists execute directly or spawn workers
-6. workers return structured outputs
-7. critic/evaluator optionally reviews
-8. orchestrator synthesizes result
-9. memory steward evaluates write-back opportunities
-10. task/run state is persisted and exposed to UI
+6. active and candidate skills can bias execution notes without replacing bounded routing
+7. workers return structured outputs
+8. critic/evaluator optionally reviews
+9. orchestrator synthesizes result
+10. memory steward evaluates write-back opportunities
+11. task/run state is persisted and exposed to UI
 
 ## 6. Memory Platform
 
@@ -197,6 +200,8 @@ Responsibilities:
 - version skills
 - bind skills to tools and scopes
 - test and promote skills
+- retain provenance and learned evidence
+- expose routing hints back into orchestration
 
 Core skill fields:
 
@@ -213,6 +218,27 @@ Core skill fields:
 - status
 - test_results
 - performance_metrics
+- provenance_summary
+- evidence_count
+- success_signals
+- invocation_hints
+- promotion_summary
+- rollback_summary
+
+Current backend shape:
+
+- `skills.py` owns lifecycle operations, testing, promotion, rollback, and orchestration-facing routing context
+- `services/skill_learning_service.py` derives learned candidate skills from repeated successful task runs
+- `skill_learning_evidence` persists source episodes separately from the skill record so learned procedures stay inspectable
+- learned skills remain distinct from authored skills through `source_type`, lifecycle state, and provenance metadata
+
+Current lifecycle shape:
+
+- `draft` for authored or manually created work-in-progress skills
+- `candidate` for learned or freshly tested skills that are visible but not yet authoritative
+- `active` for promoted skills available to orchestration as execution guidance
+- `deprecated` for previously active siblings replaced by a newer promoted version
+- `archived` for rolled-back or retired records
 
 ## 8. Task and Scheduling Platform
 

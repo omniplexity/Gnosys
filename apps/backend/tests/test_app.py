@@ -944,24 +944,30 @@ def test_skill_lifecycle_draft_test_promote_and_rollback(tmp_path: Path) -> None
     assert lifecycle_response.status_code == 200
     lifecycle = lifecycle_response.json()
     assert lifecycle["skill"]["id"] == draft["id"]
-    assert lifecycle["lifecycle_state"] == "tested"
+    assert lifecycle["lifecycle_state"] == "candidate"
     assert lifecycle["ready_for_promotion"] is True
     assert lifecycle["test_runs"][0]["id"] == test_run["id"]
+    assert lifecycle["evidence"] == []
 
     promote_response = client.post(f"/api/skills/{draft['id']}/promote", params={"requested_by": "tester"})
     assert promote_response.status_code == 200
     promoted = promote_response.json()
     assert promoted["status"] == "active"
     assert promoted["promoted_from_skill_id"] == source_skill["id"]
+    assert promoted["promotion_summary"]
+    assert promoted["last_promoted_at"] is not None
 
     rollback_response = client.post(f"/api/skills/{draft['id']}/rollback", params={"requested_by": "tester"})
     assert rollback_response.status_code == 200
     restored = rollback_response.json()
     assert restored["id"] == source_skill["id"]
     assert restored["status"] == "active"
+    assert restored["rollback_summary"]
+    assert restored["last_rolled_back_at"] is not None
 
     archived_draft = client.get(f"/api/skills/{draft['id']}").json()
     assert archived_draft["status"] == "archived"
+    assert archived_draft["rollback_summary"]
 
 
 def test_skill_can_be_proposed_from_session_reflections(tmp_path: Path) -> None:
@@ -986,8 +992,10 @@ def test_skill_can_be_proposed_from_session_reflections(tmp_path: Path) -> None:
     assert propose_response.status_code == 201
     skill = propose_response.json()
     assert skill["source_type"] == "learned"
-    assert skill["status"] == "draft"
+    assert skill["status"] == "candidate"
     assert "Learned from Personal operator" in skill["description"]
+    assert skill["provenance_summary"]
+    assert skill["evidence_count"] >= 1
 
 
 def test_skill_improve_creates_recursive_draft(tmp_path: Path) -> None:
@@ -1053,6 +1061,133 @@ def test_orchestration_invokes_matching_active_skills(tmp_path: Path) -> None:
         and event["payload"].get("task_run_id") == payload["task_run"]["id"]
         for event in events
     )
+
+
+def test_skill_learning_creates_candidate_skills_with_evidence(tmp_path: Path) -> None:
+    client = build_client(tmp_path)
+    store = client.app.state.services.store
+
+    for index in range(2):
+        task = store.create_task(
+            title=f"Research plan {index}",
+            summary="Repeated research planning workflow",
+            status="Completed",
+            priority="High",
+            project_id=None,
+        )
+        task_run = store.create_task_run(
+            task_id=task["id"],
+            objective="Research implementation planning and summarize the rollout path",
+            requested_by="tester",
+            mode="Full Access",
+            status="Completed",
+            summary="Completed repeated workflow",
+            step_count=3,
+            approval_required=False,
+        )
+        store.update_task_run(task_run["id"], status="Completed", completed=True, summary="Completed repeated workflow")
+        planner = store.create_agent_run(
+            agent_id=f"planner-{index}",
+            agent_name="Planner",
+            agent_role="Planner",
+            run_kind="specialist",
+            status="Completed",
+            objective="Plan the work",
+            summary="Planner completed",
+            task_run_id=task_run["id"],
+            parent_run_id=None,
+            recursion_depth=0,
+            child_count=0,
+            budget_units=20,
+            approval_required=False,
+        )
+        store.create_agent_run(
+            agent_id=f"research-{index}",
+            agent_name="Research Specialist",
+            agent_role="Research",
+            run_kind="specialist",
+            status="Completed",
+            objective="Research the implementation path",
+            summary="Research completed",
+            task_run_id=task_run["id"],
+            parent_run_id=planner["id"],
+            recursion_depth=1,
+            child_count=0,
+            budget_units=20,
+            approval_required=False,
+        )
+        store.create_agent_run(
+            agent_id=f"builder-{index}",
+            agent_name="Builder Specialist",
+            agent_role="Builder",
+            run_kind="specialist",
+            status="Completed",
+            objective="Summarize the rollout path",
+            summary="Builder completed",
+            task_run_id=task_run["id"],
+            parent_run_id=planner["id"],
+            recursion_depth=1,
+            child_count=0,
+            budget_units=20,
+            approval_required=False,
+        )
+
+    learn_response = client.post("/api/skills/learn", json={"limit": 10, "requested_by": "tester"})
+    assert learn_response.status_code == 201
+    payload = learn_response.json()
+    assert payload["analyzed_runs"] >= 2
+    assert payload["repeated_patterns"] >= 1
+    assert len(payload["created_skills"]) >= 1
+
+    learned_skill = payload["created_skills"][0]
+    assert learned_skill["source_type"] == "learned"
+    assert learned_skill["status"] == "candidate"
+    assert learned_skill["evidence_count"] >= 2
+    assert learned_skill["provenance_summary"]
+    assert learned_skill["promotion_summary"]
+    assert learned_skill["invocation_hints"]
+
+    lifecycle = client.get(f"/api/skills/{learned_skill['id']}/lifecycle").json()
+    assert len(lifecycle["evidence"]) >= 2
+    assert lifecycle["evidence"][0]["pattern_signature"]
+    assert lifecycle["evidence"][0]["task_run_id"] is not None
+
+
+def test_orchestration_surfaces_candidate_skills_as_routing_hints(tmp_path: Path) -> None:
+    client = build_client(tmp_path)
+
+    skill_response = client.post(
+        "/api/skills",
+        json={
+            "name": "Research Planning Procedure",
+            "description": "Candidate for research and planning summaries.",
+            "scope": "workspace",
+            "version": "0.1.0",
+            "source_type": "learned",
+            "status": "candidate",
+            "project_id": None,
+            "provenance_summary": "Derived from repeated research planning runs.",
+            "invocation_hints": ["research", "planning", "Research Specialist"],
+        },
+    )
+    assert skill_response.status_code == 201
+
+    response = client.post(
+        "/api/orchestration/launch",
+        json={
+            "objective": "Research the planning flow and summarize the next milestone",
+            "task_title": "Candidate skill routing run",
+            "task_summary": "Should surface candidate skills without activating them",
+            "requested_by": "desktop",
+            "mode": "Supervised",
+            "priority": "High",
+        },
+    )
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert "Research Planning Procedure" in payload["decision"]["candidate_skills"]
+    assert payload["decision"]["routing_notes"]
 
 
 def test_agent_crud_workflow(tmp_path: Path) -> None:

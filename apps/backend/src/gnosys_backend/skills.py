@@ -30,6 +30,7 @@ class SkillLifecycleResult:
     parent_skill: dict[str, Any] | None
     related_skills: list[dict[str, Any]]
     test_runs: list[dict[str, Any]]
+    evidence: list[dict[str, Any]]
     lifecycle_state: str
     ready_for_promotion: bool
 
@@ -51,6 +52,8 @@ class SkillEngine:
             status="draft",
             parent_skill_id=source["id"],
             project_id=source.get("project_id"),
+            provenance_summary=f"Draft forked from {source['name']} ({source['id']}).",
+            invocation_hints=source.get("invocation_hints", []),
         )
         self.store.record_event(
             event_type="skill.draft_created",
@@ -97,8 +100,12 @@ class SkillEngine:
             scope="session",
             version="0.1.0",
             source_type="learned",
-            status="draft",
+            status="candidate",
             parent_skill_id=parent_skill_id,
+            provenance_summary=f"Learned from session reflections for {session['title']}.",
+            evidence_count=len(reflections),
+            success_signals=[f"{len(reflections)} session reflections informed this draft"],
+            invocation_hints=list(_tokenize(" ".join(pattern_pool[:4]))),
         )
         self.store.record_event(
             event_type="skill.proposed",
@@ -127,6 +134,10 @@ class SkillEngine:
             status="draft",
             parent_skill_id=skill["id"],
             project_id=skill.get("project_id"),
+            provenance_summary=f"Recursive improvement draft derived from {skill['id']}.",
+            evidence_count=max(1, len(latest_tests)),
+            success_signals=[run["summary"] for run in latest_tests[:3]],
+            invocation_hints=skill.get("invocation_hints", []),
         )
         self.store.record_event(
             event_type="skill.improved",
@@ -151,6 +162,42 @@ class SkillEngine:
             matches.append((score, skill))
         matches.sort(key=lambda item: item[0], reverse=True)
         return [skill for _, skill in matches[:limit]]
+
+    def find_routing_context(self, objective: str, *, project_id: str | None = None, limit: int = 3) -> dict[str, Any]:
+        active_skills = self.find_matching_skills(objective, project_id=project_id, limit=limit)
+        objective_tokens = _tokenize(objective)
+        candidate_matches: list[tuple[float, dict[str, Any]]] = []
+        for skill in self.store.list_skills():
+            if skill["status"] != "candidate":
+                continue
+            if project_id and skill.get("project_id") not in {None, project_id}:
+                continue
+            hint_tokens = _tokenize(
+                " ".join(
+                    [
+                        skill["name"],
+                        skill["description"],
+                        " ".join(skill.get("invocation_hints", [])),
+                        " ".join(skill.get("success_signals", [])),
+                    ]
+                )
+            )
+            overlap = len(objective_tokens & hint_tokens)
+            if overlap == 0:
+                continue
+            score = overlap + min(float(skill.get("evidence_count", 0)) * 0.25, 1.0)
+            candidate_matches.append((score, skill))
+        candidate_matches.sort(key=lambda item: item[0], reverse=True)
+        candidates = [skill for _, skill in candidate_matches[:limit]]
+        notes = [
+            f"Active skills: {', '.join(skill['name'] for skill in active_skills)}"
+            if active_skills
+            else "No active skills matched this objective.",
+            f"Learned candidates: {', '.join(skill['name'] for skill in candidates)}"
+            if candidates
+            else "No learned candidates were close enough to bias routing.",
+        ]
+        return {"active": active_skills, "candidates": candidates, "notes": notes}
 
     def test_skill(
         self,
@@ -194,7 +241,7 @@ class SkillEngine:
             scope=skill["scope"],
             version=skill["version"],
             source_type=skill["source_type"],
-            status=skill["status"],
+            status="candidate" if skill["status"] == "draft" else skill["status"],
             parent_skill_id=skill.get("parent_skill_id"),
             promoted_from_skill_id=skill.get("promoted_from_skill_id"),
             latest_test_run_id=test_run["id"],
@@ -202,6 +249,10 @@ class SkillEngine:
             test_score=score,
             test_summary=summary,
             project_id=skill.get("project_id"),
+            provenance_summary=skill.get("provenance_summary"),
+            evidence_count=int(skill.get("evidence_count", 0)),
+            success_signals=skill.get("success_signals", []),
+            invocation_hints=skill.get("invocation_hints", []),
         )
         self.store.record_event(
             event_type="skill.tested",
@@ -240,7 +291,7 @@ class SkillEngine:
                 scope=sibling["scope"],
                 version=sibling["version"],
                 source_type=sibling["source_type"],
-                status="archived",
+                status="deprecated",
                 parent_skill_id=sibling.get("parent_skill_id"),
                 promoted_from_skill_id=skill_id,
                 latest_test_run_id=sibling.get("latest_test_run_id"),
@@ -248,8 +299,15 @@ class SkillEngine:
                 test_score=float(sibling.get("test_score", 0.0)),
                 test_summary=sibling.get("test_summary", ""),
                 project_id=sibling.get("project_id"),
+                provenance_summary=sibling.get("provenance_summary"),
+                evidence_count=int(sibling.get("evidence_count", 0)),
+                success_signals=sibling.get("success_signals", []),
+                invocation_hints=sibling.get("invocation_hints", []),
+                promotion_summary=f"Deprecated in favor of {skill_id}.",
+                rollback_summary=sibling.get("rollback_summary", ""),
             )
 
+        promoted_at = utc_now()
         promoted = self.store.update_skill(
             skill_id,
             name=skill["name"],
@@ -265,6 +323,12 @@ class SkillEngine:
             test_score=float(skill.get("test_score", 0.0)),
             test_summary=skill.get("test_summary", ""),
             project_id=skill.get("project_id"),
+            provenance_summary=skill.get("provenance_summary"),
+            evidence_count=int(skill.get("evidence_count", 0)),
+            success_signals=skill.get("success_signals", []),
+            invocation_hints=skill.get("invocation_hints", []),
+            promotion_summary=f"Promoted after passing tests with score {float(skill.get('test_score', 0.0)):.2f}.",
+            last_promoted_at=promoted_at,
         )
         self.store.record_event(
             event_type="skill.promoted",
@@ -303,6 +367,12 @@ class SkillEngine:
             test_score=float(skill.get("test_score", 0.0)),
             test_summary=f"Rolled back to {target['id']}",
             project_id=skill.get("project_id"),
+            provenance_summary=skill.get("provenance_summary"),
+            evidence_count=int(skill.get("evidence_count", 0)),
+            success_signals=skill.get("success_signals", []),
+            invocation_hints=skill.get("invocation_hints", []),
+            rollback_summary=f"Archived after rollback to {target['id']}.",
+            last_rolled_back_at=utc_now(),
         )
         restored = self.store.update_skill(
             target["id"],
@@ -319,6 +389,12 @@ class SkillEngine:
             test_score=float(target.get("test_score", 0.0)),
             test_summary=target.get("test_summary", ""),
             project_id=target.get("project_id"),
+            provenance_summary=target.get("provenance_summary"),
+            evidence_count=int(target.get("evidence_count", 0)),
+            success_signals=target.get("success_signals", []),
+            invocation_hints=target.get("invocation_hints", []),
+            rollback_summary=f"Restored after rollback of {skill_id}.",
+            last_rolled_back_at=utc_now(),
         )
         self.store.record_event(
             event_type="skill.rolled_back",
@@ -342,9 +418,14 @@ class SkillEngine:
             if item.get("parent_skill_id") == skill_id or item.get("promoted_from_skill_id") == skill_id
         ]
         test_runs = self.store.list_skill_test_runs(skill_id=skill_id, limit=20)
-        ready_for_promotion = skill["status"] == "draft" and skill.get("test_status") == "passed" and float(skill.get("test_score", 0.0)) >= PROMOTION_TEST_THRESHOLD
+        evidence = self.store.list_skill_learning_evidence(skill_id=skill_id, limit=20)
+        ready_for_promotion = skill["status"] in {"draft", "candidate"} and skill.get("test_status") == "passed" and float(skill.get("test_score", 0.0)) >= PROMOTION_TEST_THRESHOLD
         if skill["status"] == "active":
             lifecycle_state = "active"
+        elif skill["status"] == "candidate":
+            lifecycle_state = "candidate"
+        elif skill["status"] == "deprecated":
+            lifecycle_state = "deprecated"
         elif skill["status"] == "archived":
             lifecycle_state = "archived"
         elif test_runs:
@@ -356,6 +437,7 @@ class SkillEngine:
             parent_skill=parent_skill,
             related_skills=related_skills,
             test_runs=test_runs,
+            evidence=evidence,
             lifecycle_state=lifecycle_state,
             ready_for_promotion=ready_for_promotion,
         )

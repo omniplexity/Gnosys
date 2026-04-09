@@ -9,14 +9,14 @@ type ProjectsWorkspaceProps = {
   entityPolicies: EntityPolicy[];
   selectedProjectId: string;
   activeThreadId: string;
-  projectDraft: Record<string, string | boolean>;
+  projectDraft: Record<string, unknown>;
   crudState: 'idle' | 'saving' | 'error';
   crudError: string | null;
   onSelectProject: (projectId: string) => void;
   onCreateProject: () => void;
   onSelectThread: (threadId: string) => void;
   onCreateThread: () => void;
-  onProjectDraftChange: (field: string, value: string | boolean) => void;
+  onProjectDraftChange: (field: string, value: unknown) => void;
   onSaveProject: () => void;
   onDeleteProject: () => void;
 };

@@ -4,12 +4,12 @@ type AgentsWorkspaceProps = {
   agents: Agent[];
   agentRuns: AgentRun[];
   selectedAgentId: string;
-  agentDraft: Record<string, string | boolean>;
+  agentDraft: Record<string, unknown>;
   crudState: 'idle' | 'saving' | 'error';
   crudError: string | null;
   onSelectAgent: (agentId: string) => void;
   onCreateAgent: () => void;
-  onAgentDraftChange: (field: string, value: string | boolean) => void;
+  onAgentDraftChange: (field: string, value: unknown) => void;
   onSaveAgent: () => void;
   onDeleteAgent: () => void;
 };

@@ -16,7 +16,7 @@ The repo is no longer best described as a broad console scaffold. It now has:
 - routed chat attachments and persistent personal-session file handling
 - a darker default desktop shell with a more deliberate product surface
 
-The product is still early. The most mature layers are persistence, orchestration records, memory primitives, and session continuity. The least mature layers are reusable skill learning, memory browsing UX, and the extensibility/tool contract.
+The product is still early. The most mature layers are persistence, orchestration records, memory primitives, and session continuity. The least mature layers are reusable skill validation depth, memory browsing UX, and the extensibility/tool contract.
 
 ## Milestone status
 
@@ -155,19 +155,22 @@ Still missing:
 
 ### Skills
 
-Status: foundational only.
+Status: early governed-learning foundation.
 
 Live now:
 
 - skill entities
-- lifecycle records
+- richer lifecycle states across draft, candidate, active, deprecated, and archived
 - tests, promotion, rollback foundations
+- learned-skill extraction from repeated successful runs
+- persisted provenance and evidence links back to source task runs
+- orchestration exposure to active skills plus learned candidate routing hints
 
 Still missing:
 
-- real learned-skill extraction from repeated work
-- recursive improvement loop
-- clearer invocation contract inside orchestration
+- stronger automatic validation and benchmark depth for learned skills
+- richer rollback decision support and deprecation review tooling
+- more formal invocation contracts inside orchestration and tool execution
 
 ### Desktop UX
 
@@ -201,7 +204,7 @@ The most accurate current label is:
 
 The next implementation sequence should be:
 
-1. `v0.0.5` skill learning and recursive improvement
+1. `v0.0.5` deepen skill validation, promotion governance, and recursive improvement quality
 2. `v0.0.6` memory browser and memory operations UX
 3. personal session management UX for the chat surface
 4. `v0.0.7` extensibility/tool registry

@@ -135,9 +135,27 @@ export type SkillLifecycleResponse = {
   skill: Skill;
   parent_skill: Skill | null;
   related_skills: Skill[];
+  evidence: Array<{
+    id: string;
+    skill_id: string;
+    task_run_id: string | null;
+    agent_run_id: string | null;
+    source_kind: string;
+    pattern_signature: string;
+    evidence_summary: string;
+    success_score: number;
+    created_at: string;
+  }>;
   test_runs: SkillTestRunResponse[];
   lifecycle_state: string;
   ready_for_promotion: boolean;
+};
+
+export type SkillLearnResponse = {
+  created_skills: Skill[];
+  analyzed_runs: number;
+  repeated_patterns: number;
+  skipped_patterns: number;
 };
 
 async function requestJson<T>(url: string, fallback: string, init?: RequestInit): Promise<T> {
@@ -382,6 +400,19 @@ export function loadSkillLifecycle(skillId: string): Promise<SkillLifecycleRespo
 export function createSkillDraft(skillId: string): Promise<Skill> {
   return requestJson<Skill>(`/api/skills/${skillId}/draft?requested_by=desktop`, 'Failed to create skill draft', {
     method: 'POST'
+  });
+}
+
+export function learnSkills(limit = 12): Promise<SkillLearnResponse> {
+  return requestJson<SkillLearnResponse>('/api/skills/learn', 'Failed to derive learned skills', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      limit,
+      requested_by: 'desktop'
+    })
   });
 }
 

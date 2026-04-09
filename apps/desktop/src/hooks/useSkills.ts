@@ -2,8 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 
 import type { Skill, WorkspaceSnapshot } from '@gnosys/shared';
 
-import { createSkillDraft, loadSkillLifecycle, promoteSkill, rollbackSkill, testSkill } from '../lib/api';
-import type { SkillLifecycleResponse } from '../lib/api';
+import { createSkillDraft, learnSkills, loadSkillLifecycle, promoteSkill, rollbackSkill, testSkill } from '../lib/api';
+import type { SkillLearnResponse, SkillLifecycleResponse } from '../lib/api';
 import { toErrorMessage } from '../lib/errors';
 
 type AsyncState = 'idle' | 'loading' | 'ready' | 'error';
@@ -30,6 +30,7 @@ export function useSkills({
   const [skillLifecycle, setSkillLifecycle] = useState<SkillLifecycleResponse | null>(null);
   const [skillLifecycleState, setSkillLifecycleState] = useState<AsyncState>('idle');
   const [skillLifecycleError, setSkillLifecycleError] = useState<string | null>(null);
+  const [skillLearningSummary, setSkillLearningSummary] = useState<SkillLearnResponse | null>(null);
   const [skillTestScenario, setSkillTestScenario] = useState('Inspect the selected skill against a realistic workflow.');
   const [skillTestExpectedOutcome, setSkillTestExpectedOutcome] = useState('The skill produces a clear, actionable result and passes the lifecycle check.');
 
@@ -65,6 +66,29 @@ export function useSkills({
       setSkillLifecycleError(toErrorMessage(error, 'Failed to create learned skill draft'));
       setSkillLifecycleState('error');
       return false;
+    }
+  }, [onReplaceSkillDraft, onSelectSkill, refreshSkillLifecycle, refreshSnapshot]);
+
+  const learnSkillsFromRuns = useCallback(async (limit = 12) => {
+    setSkillLifecycleState('loading');
+    setSkillLifecycleError(null);
+    try {
+      const result = await learnSkills(limit);
+      setSkillLearningSummary(result);
+      const nextSnapshot = await refreshSnapshot();
+      const learnedSkill = result.created_skills[0] ?? nextSnapshot.skills.find((skill) => skill.source_type === 'learned' && skill.status === 'candidate') ?? null;
+      if (learnedSkill) {
+        onSelectSkill(learnedSkill.id);
+        onReplaceSkillDraft(learnedSkill);
+        await refreshSkillLifecycle(learnedSkill.id);
+      } else {
+        setSkillLifecycleState('ready');
+      }
+      return result;
+    } catch (error) {
+      setSkillLifecycleError(toErrorMessage(error, 'Failed to learn skills from recent runs'));
+      setSkillLifecycleState('error');
+      return null;
     }
   }, [onReplaceSkillDraft, onSelectSkill, refreshSkillLifecycle, refreshSnapshot]);
 
@@ -166,12 +190,14 @@ export function useSkills({
     skillLifecycle,
     skillLifecycleState,
     skillLifecycleError,
+    skillLearningSummary,
     skillTestScenario,
     setSkillTestScenario,
     skillTestExpectedOutcome,
     setSkillTestExpectedOutcome,
     refreshSkillLifecycle,
     createLearnedSkillDraft,
+    learnSkillsFromRuns,
     runSkillTest,
     promoteSelectedSkill,
     rollbackSelectedSkill,

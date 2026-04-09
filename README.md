@@ -18,11 +18,11 @@ The repository currently contains a working operational-core build with implemen
 
 ## Current stage
 
-The project is past the initial scaffold phase and Phase 2 is complete.
+The project is past the initial scaffold phase. Backend Phase 1, frontend Phase 2, and the first governed skill-learning layer of Phase 3 are now in place.
 
-- implemented: core workspace, persistence, memory, orchestration, policy controls, schedule automation maturity, context-aware diagnostics, and dedicated desktop section surfaces
-- in progress: project-thread productivity flow, file and attachment routing, main-agent identity behavior, and deeper memory governance
-- planned: advanced memory intelligence, learned skills, formal evaluation, and deeper tool execution
+- implemented: core workspace, persistence, memory, orchestration, policy controls, schedule automation maturity, context-aware diagnostics, desktop section surfaces, and a first learned-skill extraction/provenance workflow
+- in progress: project-thread productivity flow, file and attachment routing, main-agent identity behavior, deeper memory governance, and stronger skill validation/promotion depth
+- planned: advanced memory intelligence, formal evaluation, and deeper tool execution
 
 ## Running locally
 
@@ -85,4 +85,5 @@ The next layers to deepen are:
 2. deepen main-chat session identity and self-learning behavior around `AGENT.md`, `SOUL.md`, `IDENTITY.md`, and `HEARTBEAT.md`
 3. remove the remaining legacy fallback shell from the desktop and finish the section-first composition cleanup
 4. deepen memory governance and promotion rules
-5. extend diagnostics into richer historical analysis and diffing
+5. deepen learned-skill validation, routing quality, and rollback governance
+6. extend diagnostics into richer historical analysis and diffing

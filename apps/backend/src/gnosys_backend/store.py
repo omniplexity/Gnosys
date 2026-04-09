@@ -352,6 +352,14 @@ CREATE TABLE IF NOT EXISTS skills (
     test_status TEXT NOT NULL,
     test_score REAL NOT NULL,
     test_summary TEXT NOT NULL,
+    provenance_summary TEXT NOT NULL DEFAULT '',
+    evidence_count INTEGER NOT NULL DEFAULT 0,
+    success_signals TEXT NOT NULL DEFAULT '[]',
+    invocation_hints TEXT NOT NULL DEFAULT '[]',
+    promotion_summary TEXT NOT NULL DEFAULT '',
+    rollback_summary TEXT NOT NULL DEFAULT '',
+    last_promoted_at TEXT,
+    last_rolled_back_at TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -366,6 +374,18 @@ CREATE TABLE IF NOT EXISTS skill_test_runs (
     score REAL NOT NULL,
     summary TEXT NOT NULL,
     requested_by TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS skill_learning_evidence (
+    id TEXT PRIMARY KEY,
+    skill_id TEXT NOT NULL,
+    task_run_id TEXT,
+    agent_run_id TEXT,
+    source_kind TEXT NOT NULL,
+    pattern_signature TEXT NOT NULL,
+    evidence_summary TEXT NOT NULL,
+    success_score REAL NOT NULL,
     created_at TEXT NOT NULL
 );
 
@@ -509,6 +529,7 @@ CREATE TABLE IF NOT EXISTS schedule_runs (
 CREATE INDEX IF NOT EXISTS idx_events_created_at ON events(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_task_runs_created_at ON task_runs(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_agent_runs_created_at ON agent_runs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_skill_learning_evidence_skill_id ON skill_learning_evidence(skill_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_approval_requests_created_at ON approval_requests(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_schedule_runs_created_at ON schedule_runs(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_entity_policies_updated_at ON entity_policies(updated_at DESC);
@@ -644,6 +665,14 @@ class GnosysStore:
                     "test_status": "TEXT NOT NULL DEFAULT 'untested'",
                     "test_score": "REAL NOT NULL DEFAULT 0",
                     "test_summary": "TEXT NOT NULL DEFAULT ''",
+                    "provenance_summary": "TEXT NOT NULL DEFAULT ''",
+                    "evidence_count": "INTEGER NOT NULL DEFAULT 0",
+                    "success_signals": "TEXT NOT NULL DEFAULT '[]'",
+                    "invocation_hints": "TEXT NOT NULL DEFAULT '[]'",
+                    "promotion_summary": "TEXT NOT NULL DEFAULT ''",
+                    "rollback_summary": "TEXT NOT NULL DEFAULT ''",
+                    "last_promoted_at": "TEXT",
+                    "last_rolled_back_at": "TEXT",
                 },
             )
             self._ensure_columns(
@@ -1069,6 +1098,9 @@ class GnosysStore:
             return None
         data = dict(row)
         data["test_score"] = float(data.get("test_score", 0))
+        data["evidence_count"] = int(data.get("evidence_count", 0))
+        data["success_signals"] = _decode(data.get("success_signals", "[]"), []) or []
+        data["invocation_hints"] = _decode(data.get("invocation_hints", "[]"), []) or []
         return data
 
     def update_task(
@@ -1737,7 +1769,9 @@ class GnosysStore:
             rows = connection.execute(
                 """
                 SELECT id, project_id, parent_skill_id, promoted_from_skill_id, latest_test_run_id, name, description, scope, version,
-                       source_type, status, test_status, test_score, test_summary, created_at, updated_at
+                       source_type, status, test_status, test_score, test_summary, provenance_summary, evidence_count,
+                       success_signals, invocation_hints, promotion_summary, rollback_summary, last_promoted_at,
+                       last_rolled_back_at, created_at, updated_at
                 FROM skills
                 ORDER BY updated_at DESC, id ASC
                 """
@@ -1749,7 +1783,9 @@ class GnosysStore:
             row = connection.execute(
                 """
                 SELECT id, project_id, parent_skill_id, promoted_from_skill_id, latest_test_run_id, name, description, scope, version,
-                       source_type, status, test_status, test_score, test_summary, created_at, updated_at
+                       source_type, status, test_status, test_score, test_summary, provenance_summary, evidence_count,
+                       success_signals, invocation_hints, promotion_summary, rollback_summary, last_promoted_at,
+                       last_rolled_back_at, created_at, updated_at
                 FROM skills
                 WHERE id = ?
                 """,
@@ -1772,6 +1808,14 @@ class GnosysStore:
         test_status: str = "untested",
         test_score: float = 0.0,
         test_summary: str = "",
+        provenance_summary: str = "",
+        evidence_count: int = 0,
+        success_signals: list[str] | None = None,
+        invocation_hints: list[str] | None = None,
+        promotion_summary: str = "",
+        rollback_summary: str = "",
+        last_promoted_at: str | None = None,
+        last_rolled_back_at: str | None = None,
         project_id: str | None = None,
     ) -> dict[str, Any]:
         timestamp = utc_now()
@@ -1781,9 +1825,11 @@ class GnosysStore:
                 """
                 INSERT INTO skills(
                     id, project_id, parent_skill_id, promoted_from_skill_id, latest_test_run_id, name, description, scope, version,
-                    source_type, status, test_status, test_score, test_summary, created_at, updated_at
+                    source_type, status, test_status, test_score, test_summary, provenance_summary, evidence_count,
+                    success_signals, invocation_hints, promotion_summary, rollback_summary, last_promoted_at,
+                    last_rolled_back_at, created_at, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     skill_id,
@@ -1800,6 +1846,14 @@ class GnosysStore:
                     test_status,
                     test_score,
                     test_summary,
+                    provenance_summary,
+                    evidence_count,
+                    _encode(success_signals or []),
+                    _encode(invocation_hints or []),
+                    promotion_summary,
+                    rollback_summary,
+                    last_promoted_at,
+                    last_rolled_back_at,
                     timestamp,
                     timestamp,
                 ),
@@ -1823,6 +1877,14 @@ class GnosysStore:
         test_status: str | None = None,
         test_score: float | None = None,
         test_summary: str | None = None,
+        provenance_summary: str | None = None,
+        evidence_count: int | None = None,
+        success_signals: list[str] | None = None,
+        invocation_hints: list[str] | None = None,
+        promotion_summary: str | None = None,
+        rollback_summary: str | None = None,
+        last_promoted_at: str | None = None,
+        last_rolled_back_at: str | None = None,
         project_id: str | None = None,
     ) -> dict[str, Any]:
         timestamp = utc_now()
@@ -1838,6 +1900,14 @@ class GnosysStore:
                     test_status = COALESCE(?, test_status),
                     test_score = COALESCE(?, test_score),
                     test_summary = COALESCE(?, test_summary),
+                    provenance_summary = COALESCE(?, provenance_summary),
+                    evidence_count = COALESCE(?, evidence_count),
+                    success_signals = COALESCE(?, success_signals),
+                    invocation_hints = COALESCE(?, invocation_hints),
+                    promotion_summary = COALESCE(?, promotion_summary),
+                    rollback_summary = COALESCE(?, rollback_summary),
+                    last_promoted_at = COALESCE(?, last_promoted_at),
+                    last_rolled_back_at = COALESCE(?, last_rolled_back_at),
                     updated_at = ?
                 WHERE id = ?
                 """,
@@ -1855,6 +1925,14 @@ class GnosysStore:
                     test_status,
                     test_score,
                     test_summary,
+                    provenance_summary,
+                    evidence_count,
+                    _encode(success_signals) if success_signals is not None else None,
+                    _encode(invocation_hints) if invocation_hints is not None else None,
+                    promotion_summary,
+                    rollback_summary,
+                    last_promoted_at,
+                    last_rolled_back_at,
                     timestamp,
                     skill_id,
                 ),
@@ -1902,6 +1980,81 @@ class GnosysStore:
             )
             connection.commit()
         return self.get_skill_test_run(test_run_id) or {}
+
+    def create_skill_learning_evidence(
+        self,
+        *,
+        skill_id: str,
+        task_run_id: str | None,
+        agent_run_id: str | None,
+        source_kind: str,
+        pattern_signature: str,
+        evidence_summary: str,
+        success_score: float,
+    ) -> dict[str, Any]:
+        evidence_id = f"skill-evidence-{uuid4().hex[:12]}"
+        created_at = utc_now()
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO skill_learning_evidence(
+                    id, skill_id, task_run_id, agent_run_id, source_kind, pattern_signature,
+                    evidence_summary, success_score, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    evidence_id,
+                    skill_id,
+                    task_run_id,
+                    agent_run_id,
+                    source_kind,
+                    pattern_signature,
+                    evidence_summary,
+                    success_score,
+                    created_at,
+                ),
+            )
+            connection.commit()
+        return self.get_skill_learning_evidence(evidence_id) or {}
+
+    def get_skill_learning_evidence(self, evidence_id: str) -> dict[str, Any] | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT id, skill_id, task_run_id, agent_run_id, source_kind, pattern_signature,
+                       evidence_summary, success_score, created_at
+                FROM skill_learning_evidence
+                WHERE id = ?
+                """,
+                (evidence_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            item = dict(row)
+            item["success_score"] = float(item["success_score"])
+            return item
+
+    def list_skill_learning_evidence(self, *, skill_id: str | None = None, limit: int = 20) -> list[dict[str, Any]]:
+        query = [
+            "SELECT id, skill_id, task_run_id, agent_run_id, source_kind, pattern_signature, evidence_summary, success_score, created_at",
+            "FROM skill_learning_evidence",
+        ]
+        params: list[Any] = []
+        if skill_id:
+            query.append("WHERE skill_id = ?")
+            params.append(skill_id)
+        query.append("ORDER BY created_at DESC, id DESC")
+        query.append("LIMIT ?")
+        params.append(limit)
+        with self.connect() as connection:
+            rows = connection.execute(" ".join(query), params).fetchall()
+            items: list[dict[str, Any]] = []
+            for row in rows:
+                item = dict(row)
+                item["success_score"] = float(item["success_score"])
+                items.append(item)
+            return items
 
     def get_skill_test_run(self, test_run_id: str) -> dict[str, Any] | None:
         with self.connect() as connection:
