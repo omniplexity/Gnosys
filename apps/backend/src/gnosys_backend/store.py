@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -69,6 +70,7 @@ PROJECT_SEED = [
         "summary": "Foundation workspace for the desktop, backend, memory, and orchestration layers.",
         "status": "Active",
         "owner": "Gnosys",
+        "workspace_path": "workspaces/core-console",
     },
     {
         "id": "project-002",
@@ -76,7 +78,42 @@ PROJECT_SEED = [
         "summary": "Implement editable surfaces for tasks, projects, agents, skills, and schedules.",
         "status": "Planned",
         "owner": "Gnosys",
+        "workspace_path": "workspaces/phase-4-crud",
     },
+]
+
+PROJECT_THREAD_SEED = [
+    {
+        "id": "thread-001",
+        "project_id": "project-001",
+        "title": "Core runtime planning",
+        "summary": "Track execution design and storage work for the core console.",
+        "status": "Open",
+        "context_path": "threads/core-runtime-planning",
+    }
+]
+
+CHAT_SESSION_SEED = [
+    {
+        "id": "session-001",
+        "title": "Main agent thread",
+        "summary": "Default non-project orchestration conversation.",
+        "status": "Active",
+        "context_path": "agent/main-thread",
+    }
+]
+
+CHAT_MESSAGE_SEED = [
+    {
+        "id": "chat-message-001",
+        "chat_session_id": "session-001",
+        "role": "assistant",
+        "kind": "message",
+        "content": "Persistent session initialized. I will keep continuity here as work and memory deepen over time.",
+        "task_run_id": None,
+        "agent_run_ids": [],
+        "metadata": {"source": "bootstrap"},
+    }
 ]
 
 SKILL_SEED = [
@@ -147,6 +184,7 @@ MEMORY_ITEM_SEED = [
         "scope": "session",
         "project_id": "project-001",
         "state": "validated",
+        "pinned": 1,
         "title": "Phase 1 completed",
         "summary": "SQLite persistence and append-only event logging are live in the backend.",
         "content": "Phase 1 finished with a persistent SQLite store, append-only events, and live desktop refreshes.",
@@ -218,6 +256,83 @@ CREATE TABLE IF NOT EXISTS projects (
     summary TEXT NOT NULL,
     status TEXT NOT NULL,
     owner TEXT NOT NULL,
+    workspace_path TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS project_threads (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    status TEXT NOT NULL,
+    context_path TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS chat_sessions (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    status TEXT NOT NULL,
+    context_path TEXT NOT NULL,
+    agent_path TEXT NOT NULL,
+    soul_path TEXT NOT NULL,
+    identity_path TEXT NOT NULL,
+    heartbeat_path TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS chat_messages (
+    id TEXT PRIMARY KEY,
+    chat_session_id TEXT NOT NULL,
+    role TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    content TEXT NOT NULL,
+    task_run_id TEXT,
+    agent_run_ids TEXT NOT NULL,
+    metadata TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS chat_attachments (
+    id TEXT PRIMARY KEY,
+    chat_session_id TEXT NOT NULL,
+    mode TEXT NOT NULL,
+    project_id TEXT,
+    project_thread_id TEXT,
+    original_name TEXT NOT NULL,
+    stored_name TEXT NOT NULL,
+    content_type TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL,
+    storage_path TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS session_reflections (
+    id TEXT PRIMARY KEY,
+    chat_session_id TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    user_preferences TEXT NOT NULL,
+    working_style TEXT NOT NULL,
+    recurring_goals TEXT NOT NULL,
+    personal_context TEXT NOT NULL,
+    identity_refinements TEXT NOT NULL,
+    source_message_ids TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS identity_proposals (
+    id TEXT PRIMARY KEY,
+    chat_session_id TEXT NOT NULL,
+    target_file TEXT NOT NULL,
+    proposal_kind TEXT NOT NULL,
+    rationale TEXT NOT NULL,
+    proposed_content TEXT NOT NULL,
+    status TEXT NOT NULL,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -225,14 +340,33 @@ CREATE TABLE IF NOT EXISTS projects (
 CREATE TABLE IF NOT EXISTS skills (
     id TEXT PRIMARY KEY,
     project_id TEXT,
+    parent_skill_id TEXT,
+    promoted_from_skill_id TEXT,
+    latest_test_run_id TEXT,
     name TEXT NOT NULL,
     description TEXT NOT NULL,
     scope TEXT NOT NULL,
     version TEXT NOT NULL,
     source_type TEXT NOT NULL,
     status TEXT NOT NULL,
+    test_status TEXT NOT NULL,
+    test_score REAL NOT NULL,
+    test_summary TEXT NOT NULL,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS skill_test_runs (
+    id TEXT PRIMARY KEY,
+    skill_id TEXT NOT NULL,
+    scenario TEXT NOT NULL,
+    expected_outcome TEXT NOT NULL,
+    observed_outcome TEXT NOT NULL,
+    passed INTEGER NOT NULL,
+    score REAL NOT NULL,
+    summary TEXT NOT NULL,
+    requested_by TEXT NOT NULL,
+    created_at TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS schedules (
@@ -266,6 +400,7 @@ CREATE TABLE IF NOT EXISTS memory_items (
     scope TEXT NOT NULL,
     project_id TEXT,
     state TEXT NOT NULL,
+    pinned INTEGER NOT NULL DEFAULT 0,
     title TEXT NOT NULL,
     summary TEXT NOT NULL,
     content TEXT NOT NULL,
@@ -284,6 +419,9 @@ CREATE TABLE IF NOT EXISTS task_runs (
     task_id TEXT NOT NULL,
     objective TEXT NOT NULL,
     requested_by TEXT NOT NULL,
+    project_id TEXT,
+    project_thread_id TEXT,
+    chat_session_id TEXT,
     mode TEXT NOT NULL,
     status TEXT NOT NULL,
     summary TEXT NOT NULL,
@@ -381,13 +519,96 @@ def _encode(value: Any) -> str:
     return json.dumps(value, separators=(",", ":"), sort_keys=True)
 
 
-def _decode(value: str) -> Any:
-    return json.loads(value)
+def _decode(value: str, default: Any | None = None) -> Any:
+    try:
+        return json.loads(value)
+    except (TypeError, json.JSONDecodeError):
+        return default
+
+
+def _slugify(value: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
+    return slug or "project"
 
 
 @dataclass(slots=True)
 class GnosysStore:
     path: Path
+
+    @property
+    def workspace_root(self) -> Path:
+        return self.path.parent / "workspaces"
+
+    @property
+    def agent_root(self) -> Path:
+        return self.path.parent / "agent"
+
+    def _project_workspace_dir(self, project_id: str, project_name: str) -> Path:
+        return self.workspace_root / f"{_slugify(project_name)}-{project_id[-6:]}"
+
+    def _ensure_project_workspace(self, project_id: str, project_name: str) -> str:
+        directory = self._project_workspace_dir(project_id, project_name)
+        directory.mkdir(parents=True, exist_ok=True)
+        return str(directory.resolve())
+
+    def _project_threads_root(self, project_id: str, project_name: str) -> Path:
+        return Path(self._ensure_project_workspace(project_id, project_name)) / "threads"
+
+    def _ensure_project_thread_context(self, project_id: str, project_name: str, thread_id: str, title: str) -> str:
+        directory = self._project_threads_root(project_id, project_name) / f"{_slugify(title)}-{thread_id[-6:]}"
+        directory.mkdir(parents=True, exist_ok=True)
+        return str(directory.resolve())
+
+    def _ensure_chat_session_files(self, session_id: str, title: str) -> dict[str, str]:
+        directory = self.agent_root / f"{_slugify(title)}-{session_id[-6:]}"
+        directory.mkdir(parents=True, exist_ok=True)
+        files = {
+            "context_path": str(directory.resolve()),
+            "agent_path": str((directory / "AGENT.md").resolve()),
+            "soul_path": str((directory / "SOUL.md").resolve()),
+            "identity_path": str((directory / "IDENTITY.md").resolve()),
+            "heartbeat_path": str((directory / "HEARTBEAT.md").resolve()),
+        }
+        for path in [files["agent_path"], files["soul_path"], files["identity_path"], files["heartbeat_path"]]:
+            file_path = Path(path)
+            if not file_path.exists():
+                file_path.write_text(f"# {file_path.stem}\n", encoding="utf-8")
+        return files
+
+    def _chat_session_uploads_root(self, session_id: str, title: str) -> Path:
+        return Path(self._ensure_chat_session_files(session_id, title)["context_path"]) / "uploads"
+
+    def resolve_chat_context_directory(
+        self,
+        *,
+        chat_session_id: str,
+        mode: str,
+        project_id: str | None = None,
+        project_thread_id: str | None = None,
+    ) -> str:
+        session = self.get_chat_session(chat_session_id)
+        if session is None:
+            raise KeyError(chat_session_id)
+        if mode == "personal":
+            directory = self._chat_session_uploads_root(chat_session_id, session["title"])
+        elif mode == "project":
+            if not project_id:
+                raise KeyError("project_id")
+            project = self.get_project(project_id)
+            if project is None:
+                raise KeyError(project_id)
+            directory = Path(project["workspace_path"]) / "session-inputs" / chat_session_id
+        elif mode == "project-thread":
+            if not project_thread_id:
+                raise KeyError("project_thread_id")
+            thread = self.get_project_thread(project_thread_id)
+            if thread is None:
+                raise KeyError(project_thread_id)
+            directory = Path(thread["context_path"]) / "inputs"
+        else:
+            raise ValueError(f"Unsupported mode: {mode}")
+        directory.mkdir(parents=True, exist_ok=True)
+        return str(directory.resolve())
 
     def connect(self) -> sqlite3.Connection:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -400,13 +621,30 @@ class GnosysStore:
             connection.executescript(SCHEMA_SQL)
             self._ensure_columns(
                 connection,
+                table_name="task_runs",
+                columns={
+                    "project_id": "TEXT",
+                    "project_thread_id": "TEXT",
+                    "chat_session_id": "TEXT",
+                },
+            )
+            self._ensure_columns(
+                connection,
                 table_name="tasks",
                 columns={"project_id": "TEXT"},
             )
             self._ensure_columns(
                 connection,
                 table_name="skills",
-                columns={"project_id": "TEXT"},
+                columns={
+                    "project_id": "TEXT",
+                    "parent_skill_id": "TEXT",
+                    "promoted_from_skill_id": "TEXT",
+                    "latest_test_run_id": "TEXT",
+                    "test_status": "TEXT NOT NULL DEFAULT 'untested'",
+                    "test_score": "REAL NOT NULL DEFAULT 0",
+                    "test_summary": "TEXT NOT NULL DEFAULT ''",
+                },
             )
             self._ensure_columns(
                 connection,
@@ -420,16 +658,96 @@ class GnosysStore:
             self._ensure_columns(
                 connection,
                 table_name="memory_items",
-                columns={"project_id": "TEXT"},
+                columns={"project_id": "TEXT", "pinned": "INTEGER NOT NULL DEFAULT 0"},
             )
             self._ensure_columns(
                 connection,
                 table_name="entity_policies",
                 columns={"project_id": "TEXT"},
             )
+            self._ensure_columns(
+                connection,
+                table_name="projects",
+                columns={"workspace_path": "TEXT"},
+            )
+            self._ensure_columns(
+                connection,
+                table_name="project_threads",
+                columns={"context_path": "TEXT"},
+            )
+            self._ensure_columns(
+                connection,
+                table_name="chat_sessions",
+                columns={
+                    "context_path": "TEXT",
+                    "agent_path": "TEXT",
+                    "soul_path": "TEXT",
+                    "identity_path": "TEXT",
+                    "heartbeat_path": "TEXT",
+                },
+            )
+            self._ensure_columns(
+                connection,
+                table_name="chat_messages",
+                columns={
+                    "task_run_id": "TEXT",
+                    "agent_run_ids": "TEXT NOT NULL DEFAULT '[]'",
+                    "metadata": "TEXT NOT NULL DEFAULT '{}'",
+                },
+            )
             connection.execute(
                 "UPDATE schedules SET approval_policy = COALESCE(approval_policy, 'inherit'), failure_policy = COALESCE(failure_policy, 'retry_once')"
             )
+            project_rows = connection.execute("SELECT id, name, workspace_path FROM projects").fetchall()
+            for row in project_rows:
+                workspace_path = row["workspace_path"] if "workspace_path" in row.keys() else None
+                if workspace_path:
+                    Path(workspace_path).mkdir(parents=True, exist_ok=True)
+                    continue
+                generated_path = self._ensure_project_workspace(row["id"], row["name"])
+                connection.execute(
+                    "UPDATE projects SET workspace_path = ? WHERE id = ?",
+                    (generated_path, row["id"]),
+                )
+            thread_rows = connection.execute(
+                """
+                SELECT project_threads.id, project_threads.project_id, project_threads.title, project_threads.context_path, projects.name AS project_name
+                FROM project_threads
+                JOIN projects ON projects.id = project_threads.project_id
+                """
+            ).fetchall()
+            for row in thread_rows:
+                if row["context_path"]:
+                    Path(row["context_path"]).mkdir(parents=True, exist_ok=True)
+                    continue
+                generated_path = self._ensure_project_thread_context(row["project_id"], row["project_name"], row["id"], row["title"])
+                connection.execute(
+                    "UPDATE project_threads SET context_path = ? WHERE id = ?",
+                    (generated_path, row["id"]),
+                )
+            session_rows = connection.execute(
+                "SELECT id, title, context_path, agent_path, soul_path, identity_path, heartbeat_path FROM chat_sessions"
+            ).fetchall()
+            for row in session_rows:
+                if row["context_path"] and row["agent_path"] and row["soul_path"] and row["identity_path"] and row["heartbeat_path"]:
+                    self._ensure_chat_session_files(row["id"], row["title"])
+                    continue
+                generated_paths = self._ensure_chat_session_files(row["id"], row["title"])
+                connection.execute(
+                    """
+                    UPDATE chat_sessions
+                    SET context_path = ?, agent_path = ?, soul_path = ?, identity_path = ?, heartbeat_path = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        generated_paths["context_path"],
+                        generated_paths["agent_path"],
+                        generated_paths["soul_path"],
+                        generated_paths["identity_path"],
+                        generated_paths["heartbeat_path"],
+                        row["id"],
+                    ),
+                )
             if self._is_empty(connection, "workspace_state"):
                 self._seed(connection)
                 self.record_event(
@@ -511,29 +829,118 @@ class GnosysStore:
         )
         connection.executemany(
             """
-            INSERT OR REPLACE INTO projects(id, name, summary, status, owner, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT OR REPLACE INTO projects(id, name, summary, status, owner, workspace_path, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
-                (item["id"], item["name"], item["summary"], item["status"], item["owner"], timestamp, timestamp)
+                (
+                    item["id"],
+                    item["name"],
+                    item["summary"],
+                    item["status"],
+                    item["owner"],
+                    str((self.path.parent / item["workspace_path"]).resolve()),
+                    timestamp,
+                    timestamp,
+                )
                 for item in PROJECT_SEED
             ],
         )
         connection.executemany(
             """
-            INSERT OR REPLACE INTO skills(id, project_id, name, description, scope, version, source_type, status, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT OR REPLACE INTO project_threads(id, project_id, title, summary, status, context_path, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    item["id"],
+                    item["project_id"],
+                    item["title"],
+                    item["summary"],
+                    item["status"],
+                    self._ensure_project_thread_context(
+                        item["project_id"],
+                        next(project["name"] for project in PROJECT_SEED if project["id"] == item["project_id"]),
+                        item["id"],
+                        item["title"],
+                    ),
+                    timestamp,
+                    timestamp,
+                )
+                for item in PROJECT_THREAD_SEED
+            ],
+        )
+        connection.executemany(
+            """
+            INSERT OR REPLACE INTO chat_sessions(
+                id, title, summary, status, context_path, agent_path, soul_path, identity_path, heartbeat_path, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    item["id"],
+                    item["title"],
+                    item["summary"],
+                    item["status"],
+                    session_paths["context_path"],
+                    session_paths["agent_path"],
+                    session_paths["soul_path"],
+                    session_paths["identity_path"],
+                    session_paths["heartbeat_path"],
+                    timestamp,
+                    timestamp,
+                )
+                for item in CHAT_SESSION_SEED
+                for session_paths in [self._ensure_chat_session_files(item["id"], item["title"])]
+            ],
+        )
+        connection.executemany(
+            """
+            INSERT OR REPLACE INTO chat_messages(
+                id, chat_session_id, role, kind, content, task_run_id, agent_run_ids, metadata, created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    item["id"],
+                    item["chat_session_id"],
+                    item["role"],
+                    item["kind"],
+                    item["content"],
+                    item["task_run_id"],
+                    _encode(item["agent_run_ids"]),
+                    _encode(item["metadata"]),
+                    timestamp,
+                )
+                for item in CHAT_MESSAGE_SEED
+            ],
+        )
+        connection.executemany(
+            """
+            INSERT OR REPLACE INTO skills(
+                id, project_id, parent_skill_id, promoted_from_skill_id, latest_test_run_id, name, description, scope, version,
+                source_type, status, test_status, test_score, test_summary, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 (
                     item["id"],
                     item.get("project_id"),
+                    item.get("parent_skill_id"),
+                    item.get("promoted_from_skill_id"),
+                    item.get("latest_test_run_id"),
                     item["name"],
                     item["description"],
                     item["scope"],
                     item["version"],
                     item["source_type"],
                     item["status"],
+                    item.get("test_status", "untested"),
+                    item.get("test_score", 0.0),
+                    item.get("test_summary", ""),
                     timestamp,
                     timestamp,
                 )
@@ -577,10 +984,10 @@ class GnosysStore:
         connection.executemany(
             """
             INSERT OR REPLACE INTO memory_items(
-                id, layer, scope, state, title, summary, content, provenance, source_ref,
+                id, layer, scope, state, pinned, title, summary, content, provenance, source_ref,
                 confidence, freshness, tags, created_at, updated_at, last_accessed_at, project_id
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 (
@@ -588,6 +995,7 @@ class GnosysStore:
                     item["layer"],
                     item["scope"],
                     item["state"],
+                    int(item.get("pinned", False)),
                     item["title"],
                     item["summary"],
                     item["content"],
@@ -651,14 +1059,17 @@ class GnosysStore:
                 (task_id, project_id, title, summary, status, priority, timestamp),
             )
             connection.commit()
-        return {
-            "id": task_id,
-            "project_id": project_id,
-            "title": title,
-            "summary": summary,
-            "status": status,
-            "priority": priority,
-        }
+        task = self.get_task(task_id)
+        if task is None:
+            raise KeyError(task_id)
+        return task
+
+    def _skill_row(self, row: sqlite3.Row | None) -> dict[str, Any] | None:
+        if row is None:
+            return None
+        data = dict(row)
+        data["test_score"] = float(data.get("test_score", 0))
+        return data
 
     def update_task(
         self,
@@ -673,7 +1084,7 @@ class GnosysStore:
         timestamp = utc_now()
         with self.connect() as connection:
             connection.execute(
-                "UPDATE tasks SET project_id = COALESCE(?, project_id), title = ?, summary = ?, status = ?, priority = ?, updated_at = ? WHERE id = ?",
+                "UPDATE tasks SET project_id = ?, title = ?, summary = ?, status = ?, priority = ?, updated_at = ? WHERE id = ?",
                 (
                     project_id,
                     title.strip() or "Untitled task",
@@ -798,6 +1209,16 @@ class GnosysStore:
             row = connection.execute("SELECT COUNT(*) AS count FROM projects").fetchone()
             return int(row["count"] if row is not None else 0)
 
+    def count_project_threads(self) -> int:
+        with self.connect() as connection:
+            row = connection.execute("SELECT COUNT(*) AS count FROM project_threads").fetchone()
+            return int(row["count"] if row is not None else 0)
+
+    def count_chat_sessions(self) -> int:
+        with self.connect() as connection:
+            row = connection.execute("SELECT COUNT(*) AS count FROM chat_sessions").fetchone()
+            return int(row["count"] if row is not None else 0)
+
     def count_skills(self) -> int:
         with self.connect() as connection:
             row = connection.execute("SELECT COUNT(*) AS count FROM skills").fetchone()
@@ -811,14 +1232,449 @@ class GnosysStore:
     def list_projects(self) -> list[dict[str, Any]]:
         with self.connect() as connection:
             rows = connection.execute(
-                "SELECT id, name, summary, status, owner, created_at, updated_at FROM projects ORDER BY updated_at DESC, id ASC"
+                "SELECT id, name, summary, status, owner, workspace_path, created_at, updated_at FROM projects ORDER BY updated_at DESC, id ASC"
             ).fetchall()
             return [dict(row) for row in rows]
+
+    def list_project_threads(self, project_id: str | None = None) -> list[dict[str, Any]]:
+        with self.connect() as connection:
+            if project_id:
+                rows = connection.execute(
+                    """
+                    SELECT id, project_id, title, summary, status, context_path, created_at, updated_at
+                    FROM project_threads
+                    WHERE project_id = ?
+                    ORDER BY updated_at DESC, id ASC
+                    """,
+                    (project_id,),
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    """
+                    SELECT id, project_id, title, summary, status, context_path, created_at, updated_at
+                    FROM project_threads
+                    ORDER BY updated_at DESC, id ASC
+                    """
+                ).fetchall()
+            return [dict(row) for row in rows]
+
+    def get_project_thread(self, thread_id: str) -> dict[str, Any] | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT id, project_id, title, summary, status, context_path, created_at, updated_at
+                FROM project_threads
+                WHERE id = ?
+                """,
+                (thread_id,),
+            ).fetchone()
+            return dict(row) if row is not None else None
+
+    def create_project_thread(self, *, project_id: str, title: str, summary: str, status: str = "Open") -> dict[str, Any]:
+        timestamp = utc_now()
+        thread_id = f"thread-{uuid4().hex[:12]}"
+        project = self.get_project(project_id)
+        if project is None:
+            raise KeyError(project_id)
+        normalized_title = title.strip() or "Untitled thread"
+        context_path = self._ensure_project_thread_context(project_id, project["name"], thread_id, normalized_title)
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO project_threads(id, project_id, title, summary, status, context_path, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (thread_id, project_id, normalized_title, summary.strip() or normalized_title, status, context_path, timestamp, timestamp),
+            )
+            connection.commit()
+        return self.get_project_thread(thread_id) or {}
+
+    def update_project_thread(self, thread_id: str, *, title: str, summary: str, status: str) -> dict[str, Any]:
+        existing = self.get_project_thread(thread_id)
+        if existing is None:
+            raise KeyError(thread_id)
+        timestamp = utc_now()
+        normalized_title = title.strip() or "Untitled thread"
+        with self.connect() as connection:
+            connection.execute(
+                """
+                UPDATE project_threads
+                SET title = ?, summary = ?, status = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (normalized_title, summary.strip() or normalized_title, status, timestamp, thread_id),
+            )
+            connection.commit()
+        thread = self.get_project_thread(thread_id)
+        if thread is None:
+            raise KeyError(thread_id)
+        return thread
+
+    def delete_project_thread(self, thread_id: str) -> None:
+        with self.connect() as connection:
+            connection.execute("DELETE FROM project_threads WHERE id = ?", (thread_id,))
+            connection.commit()
+
+    def list_chat_sessions(self) -> list[dict[str, Any]]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT id, title, summary, status, context_path, agent_path, soul_path, identity_path, heartbeat_path, created_at, updated_at
+                FROM chat_sessions
+                ORDER BY updated_at DESC, id ASC
+                """
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    def _chat_message_row(self, row: sqlite3.Row | None) -> dict[str, Any] | None:
+        if row is None:
+            return None
+        data = dict(row)
+        data["agent_run_ids"] = _decode(data.get("agent_run_ids") or "[]", default=[])
+        data["metadata"] = _decode(data.get("metadata") or "{}", default={})
+        return data
+
+    def _session_reflection_row(self, row: sqlite3.Row | None) -> dict[str, Any] | None:
+        if row is None:
+            return None
+        data = dict(row)
+        for key in ("user_preferences", "working_style", "recurring_goals", "personal_context", "identity_refinements", "source_message_ids"):
+            data[key] = _decode(data.get(key) or "[]", default=[])
+        return data
+
+    def _identity_proposal_row(self, row: sqlite3.Row | None) -> dict[str, Any] | None:
+        return dict(row) if row is not None else None
+
+    def _chat_attachment_row(self, row: sqlite3.Row | None) -> dict[str, Any] | None:
+        return dict(row) if row is not None else None
+
+    def list_chat_messages(self, chat_session_id: str, *, limit: int = 200) -> list[dict[str, Any]]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT id, chat_session_id, role, kind, content, task_run_id, agent_run_ids, metadata, created_at
+                FROM chat_messages
+                WHERE chat_session_id = ?
+                ORDER BY rowid ASC
+                LIMIT ?
+                """,
+                (chat_session_id, limit),
+            ).fetchall()
+            messages: list[dict[str, Any]] = []
+            for row in rows:
+                message = self._chat_message_row(row)
+                if message is not None:
+                    messages.append(message)
+            return messages
+
+    def create_chat_message(
+        self,
+        *,
+        chat_session_id: str,
+        role: str,
+        kind: str,
+        content: str,
+        task_run_id: str | None = None,
+        agent_run_ids: list[str] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        timestamp = utc_now()
+        message_id = f"chat-message-{uuid4().hex[:12]}"
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO chat_messages(
+                    id, chat_session_id, role, kind, content, task_run_id, agent_run_ids, metadata, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    message_id,
+                    chat_session_id,
+                    role,
+                    kind,
+                    content.strip(),
+                    task_run_id,
+                    _encode(agent_run_ids or []),
+                    _encode(metadata or {}),
+                    timestamp,
+                ),
+            )
+            connection.execute(
+                "UPDATE chat_sessions SET updated_at = ? WHERE id = ?",
+                (timestamp, chat_session_id),
+            )
+            connection.commit()
+        return self.get_chat_message(message_id) or {}
+
+    def get_chat_message(self, message_id: str) -> dict[str, Any] | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT id, chat_session_id, role, kind, content, task_run_id, agent_run_ids, metadata, created_at
+                FROM chat_messages
+                WHERE id = ?
+                """,
+                (message_id,),
+            ).fetchone()
+            return self._chat_message_row(row)
+
+    def list_chat_attachments(self, chat_session_id: str, *, limit: int = 50) -> list[dict[str, Any]]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT id, chat_session_id, mode, project_id, project_thread_id, original_name, stored_name,
+                       content_type, size_bytes, storage_path, created_at
+                FROM chat_attachments
+                WHERE chat_session_id = ?
+                ORDER BY created_at DESC, id DESC
+                LIMIT ?
+                """,
+                (chat_session_id, limit),
+            ).fetchall()
+            return [self._chat_attachment_row(row) for row in rows if row is not None]
+
+    def get_chat_attachment(self, attachment_id: str) -> dict[str, Any] | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT id, chat_session_id, mode, project_id, project_thread_id, original_name, stored_name,
+                       content_type, size_bytes, storage_path, created_at
+                FROM chat_attachments
+                WHERE id = ?
+                """,
+                (attachment_id,),
+            ).fetchone()
+            return self._chat_attachment_row(row)
+
+    def create_chat_attachment(
+        self,
+        *,
+        chat_session_id: str,
+        mode: str,
+        project_id: str | None,
+        project_thread_id: str | None,
+        original_name: str,
+        stored_name: str,
+        content_type: str,
+        size_bytes: int,
+        storage_path: str,
+    ) -> dict[str, Any]:
+        attachment_id = f"attachment-{uuid4().hex[:12]}"
+        timestamp = utc_now()
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO chat_attachments(
+                    id, chat_session_id, mode, project_id, project_thread_id, original_name, stored_name,
+                    content_type, size_bytes, storage_path, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    attachment_id,
+                    chat_session_id,
+                    mode,
+                    project_id,
+                    project_thread_id,
+                    original_name,
+                    stored_name,
+                    content_type,
+                    size_bytes,
+                    storage_path,
+                    timestamp,
+                ),
+            )
+            connection.commit()
+        return self.get_chat_attachment(attachment_id) or {}
+
+    def list_session_reflections(self, chat_session_id: str, *, limit: int = 50) -> list[dict[str, Any]]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT id, chat_session_id, summary, user_preferences, working_style, recurring_goals,
+                       personal_context, identity_refinements, source_message_ids, created_at
+                FROM session_reflections
+                WHERE chat_session_id = ?
+                ORDER BY created_at DESC, id DESC
+                LIMIT ?
+                """,
+                (chat_session_id, limit),
+            ).fetchall()
+            items: list[dict[str, Any]] = []
+            for row in rows:
+                item = self._session_reflection_row(row)
+                if item is not None:
+                    items.append(item)
+            return items
+
+    def create_session_reflection(
+        self,
+        *,
+        chat_session_id: str,
+        summary: str,
+        user_preferences: list[str] | None = None,
+        working_style: list[str] | None = None,
+        recurring_goals: list[str] | None = None,
+        personal_context: list[str] | None = None,
+        identity_refinements: list[str] | None = None,
+        source_message_ids: list[str] | None = None,
+    ) -> dict[str, Any]:
+        timestamp = utc_now()
+        reflection_id = f"reflection-{uuid4().hex[:12]}"
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO session_reflections(
+                    id, chat_session_id, summary, user_preferences, working_style, recurring_goals,
+                    personal_context, identity_refinements, source_message_ids, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    reflection_id,
+                    chat_session_id,
+                    summary,
+                    _encode(user_preferences or []),
+                    _encode(working_style or []),
+                    _encode(recurring_goals or []),
+                    _encode(personal_context or []),
+                    _encode(identity_refinements or []),
+                    _encode(source_message_ids or []),
+                    timestamp,
+                ),
+            )
+            connection.commit()
+        return self.list_session_reflections(chat_session_id, limit=1)[0]
+
+    def list_identity_proposals(self, chat_session_id: str, *, limit: int = 50) -> list[dict[str, Any]]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT id, chat_session_id, target_file, proposal_kind, rationale, proposed_content, status, created_at, updated_at
+                FROM identity_proposals
+                WHERE chat_session_id = ?
+                ORDER BY updated_at DESC, created_at DESC, id DESC
+                LIMIT ?
+                """,
+                (chat_session_id, limit),
+            ).fetchall()
+            return [self._identity_proposal_row(row) for row in rows if row is not None]
+
+    def create_identity_proposal(
+        self,
+        *,
+        chat_session_id: str,
+        target_file: str,
+        proposal_kind: str,
+        rationale: str,
+        proposed_content: str,
+        status: str = "proposed",
+    ) -> dict[str, Any]:
+        timestamp = utc_now()
+        proposal_id = f"identity-proposal-{uuid4().hex[:12]}"
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO identity_proposals(
+                    id, chat_session_id, target_file, proposal_kind, rationale, proposed_content, status, created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    proposal_id,
+                    chat_session_id,
+                    target_file,
+                    proposal_kind,
+                    rationale,
+                    proposed_content,
+                    status,
+                    timestamp,
+                    timestamp,
+                ),
+            )
+            connection.commit()
+        return self.list_identity_proposals(chat_session_id, limit=1)[0]
+
+    def get_chat_session(self, session_id: str) -> dict[str, Any] | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT id, title, summary, status, context_path, agent_path, soul_path, identity_path, heartbeat_path, created_at, updated_at
+                FROM chat_sessions
+                WHERE id = ?
+                """,
+                (session_id,),
+            ).fetchone()
+            return dict(row) if row is not None else None
+
+    def create_chat_session(self, *, title: str, summary: str, status: str = "Active") -> dict[str, Any]:
+        timestamp = utc_now()
+        session_id = f"session-{uuid4().hex[:12]}"
+        normalized_title = title.strip() or "Untitled session"
+        paths = self._ensure_chat_session_files(session_id, normalized_title)
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO chat_sessions(
+                    id, title, summary, status, context_path, agent_path, soul_path, identity_path, heartbeat_path, created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    session_id,
+                    normalized_title,
+                    summary.strip() or normalized_title,
+                    status,
+                    paths["context_path"],
+                    paths["agent_path"],
+                    paths["soul_path"],
+                    paths["identity_path"],
+                    paths["heartbeat_path"],
+                    timestamp,
+                    timestamp,
+                ),
+            )
+            connection.commit()
+        self.create_chat_message(
+            chat_session_id=session_id,
+            role="assistant",
+            kind="message",
+            content=f"Persistent session {normalized_title} initialized. I will keep continuity here as we work.",
+            metadata={"source": "session.create"},
+        )
+        return self.get_chat_session(session_id) or {}
+
+    def update_chat_session(self, session_id: str, *, title: str, summary: str, status: str) -> dict[str, Any]:
+        existing = self.get_chat_session(session_id)
+        if existing is None:
+            raise KeyError(session_id)
+        timestamp = utc_now()
+        normalized_title = title.strip() or "Untitled session"
+        with self.connect() as connection:
+            connection.execute(
+                """
+                UPDATE chat_sessions
+                SET title = ?, summary = ?, status = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (normalized_title, summary.strip() or normalized_title, status, timestamp, session_id),
+            )
+            connection.commit()
+        session = self.get_chat_session(session_id)
+        if session is None:
+            raise KeyError(session_id)
+        return session
+
+    def delete_chat_session(self, session_id: str) -> None:
+        with self.connect() as connection:
+            connection.execute("DELETE FROM chat_sessions WHERE id = ?", (session_id,))
+            connection.commit()
 
     def get_project(self, project_id: str) -> dict[str, Any] | None:
         with self.connect() as connection:
             row = connection.execute(
-                "SELECT id, name, summary, status, owner, created_at, updated_at FROM projects WHERE id = ?",
+                "SELECT id, name, summary, status, owner, workspace_path, created_at, updated_at FROM projects WHERE id = ?",
                 (project_id,),
             ).fetchone()
             return dict(row) if row is not None else None
@@ -826,20 +1682,44 @@ class GnosysStore:
     def create_project(self, *, name: str, summary: str, status: str = "Planned", owner: str = "Gnosys") -> dict[str, Any]:
         timestamp = utc_now()
         project_id = f"project-{uuid4().hex[:12]}"
+        normalized_name = name.strip() or "Untitled project"
+        workspace_path = self._ensure_project_workspace(project_id, normalized_name)
         with self.connect() as connection:
             connection.execute(
-                "INSERT INTO projects(id, name, summary, status, owner, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (project_id, name.strip() or "Untitled project", summary.strip() or name.strip() or "Untitled project", status, owner.strip() or "Gnosys", timestamp, timestamp),
+                "INSERT INTO projects(id, name, summary, status, owner, workspace_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    project_id,
+                    normalized_name,
+                    summary.strip() or normalized_name,
+                    status,
+                    owner.strip() or "Gnosys",
+                    workspace_path,
+                    timestamp,
+                    timestamp,
+                ),
             )
             connection.commit()
         return self.get_project(project_id) or {}
 
     def update_project(self, project_id: str, *, name: str, summary: str, status: str, owner: str) -> dict[str, Any]:
         timestamp = utc_now()
+        normalized_name = name.strip() or "Untitled project"
+        project = self.get_project(project_id)
+        if project is None:
+            raise KeyError(project_id)
+        workspace_path = project["workspace_path"] or self._ensure_project_workspace(project_id, normalized_name)
         with self.connect() as connection:
             connection.execute(
-                "UPDATE projects SET name = ?, summary = ?, status = ?, owner = ?, updated_at = ? WHERE id = ?",
-                (name.strip() or "Untitled project", summary.strip() or name.strip() or "Untitled project", status, owner.strip() or "Gnosys", timestamp, project_id),
+                "UPDATE projects SET name = ?, summary = ?, status = ?, owner = ?, workspace_path = ?, updated_at = ? WHERE id = ?",
+                (
+                    normalized_name,
+                    summary.strip() or normalized_name,
+                    status,
+                    owner.strip() or "Gnosys",
+                    workspace_path,
+                    timestamp,
+                    project_id,
+                ),
             )
             connection.commit()
         project = self.get_project(project_id)
@@ -855,17 +1735,27 @@ class GnosysStore:
     def list_skills(self) -> list[dict[str, Any]]:
         with self.connect() as connection:
             rows = connection.execute(
-                "SELECT id, project_id, name, description, scope, version, source_type, status, created_at, updated_at FROM skills ORDER BY updated_at DESC, id ASC"
+                """
+                SELECT id, project_id, parent_skill_id, promoted_from_skill_id, latest_test_run_id, name, description, scope, version,
+                       source_type, status, test_status, test_score, test_summary, created_at, updated_at
+                FROM skills
+                ORDER BY updated_at DESC, id ASC
+                """
             ).fetchall()
-            return [dict(row) for row in rows]
+            return [self._skill_row(row) or {} for row in rows]
 
     def get_skill(self, skill_id: str) -> dict[str, Any] | None:
         with self.connect() as connection:
             row = connection.execute(
-                "SELECT id, project_id, name, description, scope, version, source_type, status, created_at, updated_at FROM skills WHERE id = ?",
+                """
+                SELECT id, project_id, parent_skill_id, promoted_from_skill_id, latest_test_run_id, name, description, scope, version,
+                       source_type, status, test_status, test_score, test_summary, created_at, updated_at
+                FROM skills
+                WHERE id = ?
+                """,
                 (skill_id,),
             ).fetchone()
-            return dict(row) if row is not None else None
+            return self._skill_row(row)
 
     def create_skill(
         self,
@@ -876,6 +1766,12 @@ class GnosysStore:
         version: str = "0.1.0",
         source_type: str = "authored",
         status: str = "draft",
+        parent_skill_id: str | None = None,
+        promoted_from_skill_id: str | None = None,
+        latest_test_run_id: str | None = None,
+        test_status: str = "untested",
+        test_score: float = 0.0,
+        test_summary: str = "",
         project_id: str | None = None,
     ) -> dict[str, Any]:
         timestamp = utc_now()
@@ -883,10 +1779,30 @@ class GnosysStore:
         with self.connect() as connection:
             connection.execute(
                 """
-                INSERT INTO skills(id, project_id, name, description, scope, version, source_type, status, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO skills(
+                    id, project_id, parent_skill_id, promoted_from_skill_id, latest_test_run_id, name, description, scope, version,
+                    source_type, status, test_status, test_score, test_summary, created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (skill_id, project_id, name.strip() or "Untitled skill", description.strip() or name.strip() or "Untitled skill", scope, version, source_type, status, timestamp, timestamp),
+                (
+                    skill_id,
+                    project_id,
+                    parent_skill_id,
+                    promoted_from_skill_id,
+                    latest_test_run_id,
+                    name.strip() or "Untitled skill",
+                    description.strip() or name.strip() or "Untitled skill",
+                    scope,
+                    version,
+                    source_type,
+                    status,
+                    test_status,
+                    test_score,
+                    test_summary,
+                    timestamp,
+                    timestamp,
+                ),
             )
             connection.commit()
         return self.get_skill(skill_id) or {}
@@ -901,6 +1817,12 @@ class GnosysStore:
         version: str,
         source_type: str,
         status: str,
+        parent_skill_id: str | None = None,
+        promoted_from_skill_id: str | None = None,
+        latest_test_run_id: str | None = None,
+        test_status: str | None = None,
+        test_score: float | None = None,
+        test_summary: str | None = None,
         project_id: str | None = None,
     ) -> dict[str, Any]:
         timestamp = utc_now()
@@ -908,16 +1830,123 @@ class GnosysStore:
             connection.execute(
                 """
                 UPDATE skills
-                SET project_id = COALESCE(?, project_id), name = ?, description = ?, scope = ?, version = ?, source_type = ?, status = ?, updated_at = ?
+                SET project_id = ?,
+                    parent_skill_id = COALESCE(?, parent_skill_id),
+                    promoted_from_skill_id = COALESCE(?, promoted_from_skill_id),
+                    latest_test_run_id = COALESCE(?, latest_test_run_id),
+                    name = ?, description = ?, scope = ?, version = ?, source_type = ?, status = ?,
+                    test_status = COALESCE(?, test_status),
+                    test_score = COALESCE(?, test_score),
+                    test_summary = COALESCE(?, test_summary),
+                    updated_at = ?
                 WHERE id = ?
                 """,
-                (project_id, name.strip() or "Untitled skill", description.strip() or name.strip() or "Untitled skill", scope, version, source_type, status, timestamp, skill_id),
+                (
+                    project_id,
+                    parent_skill_id,
+                    promoted_from_skill_id,
+                    latest_test_run_id,
+                    name.strip() or "Untitled skill",
+                    description.strip() or name.strip() or "Untitled skill",
+                    scope,
+                    version,
+                    source_type,
+                    status,
+                    test_status,
+                    test_score,
+                    test_summary,
+                    timestamp,
+                    skill_id,
+                ),
             )
             connection.commit()
         skill = self.get_skill(skill_id)
         if skill is None:
             raise KeyError(skill_id)
         return skill
+
+    def create_skill_test_run(
+        self,
+        *,
+        skill_id: str,
+        scenario: str,
+        expected_outcome: str,
+        observed_outcome: str,
+        passed: bool,
+        score: float,
+        summary: str,
+        requested_by: str,
+    ) -> dict[str, Any]:
+        timestamp = utc_now()
+        test_run_id = f"skill-test-{uuid4().hex[:12]}"
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO skill_test_runs(
+                    id, skill_id, scenario, expected_outcome, observed_outcome, passed, score, summary, requested_by, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    test_run_id,
+                    skill_id,
+                    scenario,
+                    expected_outcome,
+                    observed_outcome,
+                    int(passed),
+                    score,
+                    summary,
+                    requested_by,
+                    timestamp,
+                ),
+            )
+            connection.commit()
+        return self.get_skill_test_run(test_run_id) or {}
+
+    def get_skill_test_run(self, test_run_id: str) -> dict[str, Any] | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT id, skill_id, scenario, expected_outcome, observed_outcome, passed, score, summary, requested_by, created_at
+                FROM skill_test_runs
+                WHERE id = ?
+                """,
+                (test_run_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            item = dict(row)
+            item["passed"] = bool(item["passed"])
+            item["score"] = float(item["score"])
+            return item
+
+    def list_skill_test_runs(self, *, skill_id: str | None = None, limit: int = 20) -> list[dict[str, Any]]:
+        query = [
+            "SELECT id, skill_id, scenario, expected_outcome, observed_outcome, passed, score, summary, requested_by, created_at",
+            "FROM skill_test_runs",
+        ]
+        params: list[Any] = []
+        if skill_id:
+            query.append("WHERE skill_id = ?")
+            params.append(skill_id)
+        query.append("ORDER BY created_at DESC, id DESC")
+        query.append("LIMIT ?")
+        params.append(limit)
+        sql = " ".join(query)
+        with self.connect() as connection:
+            rows = connection.execute(sql, params).fetchall()
+            result = []
+            for row in rows:
+                item = dict(row)
+                item["passed"] = bool(item["passed"])
+                item["score"] = float(item["score"])
+                result.append(item)
+            return result
+
+    def count_skill_test_runs(self) -> int:
+        with self.connect() as connection:
+            row = connection.execute("SELECT COUNT(*) AS count FROM skill_test_runs").fetchone()
+            return int(row["count"] if row is not None else 0)
 
     def delete_skill(self, skill_id: str) -> None:
         with self.connect() as connection:
@@ -1022,7 +2051,7 @@ class GnosysStore:
             connection.execute(
                 """
                 UPDATE schedules
-                SET project_id = COALESCE(?, project_id), name = ?, target_type = ?, target_ref = ?, schedule_expression = ?, timezone = ?, enabled = ?, approval_policy = ?, failure_policy = ?, last_run_at = ?, next_run_at = ?, updated_at = ?
+                SET project_id = ?, name = ?, target_type = ?, target_ref = ?, schedule_expression = ?, timezone = ?, enabled = ?, approval_policy = ?, failure_policy = ?, last_run_at = ?, next_run_at = ?, updated_at = ?
                 WHERE id = ?
                 """,
                 (
@@ -1062,7 +2091,7 @@ class GnosysStore:
         state: str | None = None,
     ) -> list[dict[str, Any]]:
         query = [
-            "SELECT id, layer, scope, project_id, state, title, summary, content, provenance, source_ref, confidence, freshness, tags, created_at, updated_at, last_accessed_at",
+            "SELECT id, layer, scope, project_id, state, pinned, title, summary, content, provenance, source_ref, confidence, freshness, tags, created_at, updated_at, last_accessed_at",
             "FROM memory_items",
         ]
         params: list[Any] = []
@@ -1091,6 +2120,7 @@ class GnosysStore:
             return [
                 {
                     **dict(row),
+                    "pinned": bool(row["pinned"]),
                     "tags": _decode(row["tags"]),
                 }
                 for row in rows
@@ -1105,7 +2135,7 @@ class GnosysStore:
         with self.connect() as connection:
             row = connection.execute(
                 """
-                SELECT id, layer, scope, project_id, state, title, summary, content, provenance, source_ref,
+                SELECT id, layer, scope, project_id, state, pinned, title, summary, content, provenance, source_ref,
                        confidence, freshness, tags, created_at, updated_at, last_accessed_at
                 FROM memory_items
                 WHERE id = ?
@@ -1116,6 +2146,7 @@ class GnosysStore:
                 return None
             return {
                 **dict(row),
+                "pinned": bool(row["pinned"]),
                 "tags": _decode(row["tags"]),
             }
 
@@ -1129,16 +2160,17 @@ class GnosysStore:
             connection.execute(
                 """
                 INSERT OR REPLACE INTO memory_items(
-                    id, layer, scope, state, title, summary, content, provenance, source_ref,
+                    id, layer, scope, state, pinned, title, summary, content, provenance, source_ref,
                     confidence, freshness, tags, created_at, updated_at, last_accessed_at, project_id
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     item["id"],
                     item["layer"],
                     item["scope"],
                     item["state"],
+                    int(item.get("pinned", existing["pinned"] if existing is not None else False)),
                     item["title"],
                     item["summary"],
                     item.get("content", item["summary"]),
@@ -1176,6 +2208,40 @@ class GnosysStore:
             raise KeyError(item_id)
         return item
 
+    def pin_memory_item(self, item_id: str, pinned: bool = True) -> dict[str, Any]:
+        timestamp = utc_now()
+        with self.connect() as connection:
+            connection.execute(
+                """
+                UPDATE memory_items
+                SET pinned = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (int(pinned), timestamp, item_id),
+            )
+            connection.commit()
+        item = self.get_memory_item(item_id)
+        if item is None:
+            raise KeyError(item_id)
+        return item
+
+    def forget_memory_item(self, item_id: str) -> dict[str, Any]:
+        timestamp = utc_now()
+        with self.connect() as connection:
+            connection.execute(
+                """
+                UPDATE memory_items
+                SET state = 'archived', pinned = 0, updated_at = ?
+                WHERE id = ?
+                """,
+                (timestamp, item_id),
+            )
+            connection.commit()
+        item = self.get_memory_item(item_id)
+        if item is None:
+            raise KeyError(item_id)
+        return item
+
     def touch_memory_item(self, item_id: str) -> None:
         timestamp = utc_now()
         with self.connect() as connection:
@@ -1191,6 +2257,9 @@ class GnosysStore:
         task_id: str,
         objective: str,
         requested_by: str,
+        project_id: str | None = None,
+        project_thread_id: str | None = None,
+        chat_session_id: str | None = None,
         mode: str,
         status: str,
         summary: str,
@@ -1203,16 +2272,19 @@ class GnosysStore:
             connection.execute(
                 """
                 INSERT INTO task_runs(
-                    id, task_id, objective, requested_by, mode, status, summary, step_count,
+                    id, task_id, objective, requested_by, project_id, project_thread_id, chat_session_id, mode, status, summary, step_count,
                     approval_required, created_at, updated_at, completed_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     run_id,
                     task_id,
                     objective,
                     requested_by,
+                    project_id,
+                    project_thread_id,
+                    chat_session_id,
                     mode,
                     status,
                     summary,
@@ -1272,7 +2344,7 @@ class GnosysStore:
         with self.connect() as connection:
             row = connection.execute(
                 """
-                SELECT id, task_id, objective, requested_by, mode, status, summary, step_count,
+                SELECT id, task_id, objective, requested_by, project_id, project_thread_id, chat_session_id, mode, status, summary, step_count,
                        approval_required, created_at, updated_at, completed_at
                 FROM task_runs
                 WHERE id = ?
@@ -1289,7 +2361,7 @@ class GnosysStore:
         with self.connect() as connection:
             rows = connection.execute(
                 """
-                SELECT id, task_id, objective, requested_by, mode, status, summary, step_count,
+                SELECT id, task_id, objective, requested_by, project_id, project_thread_id, chat_session_id, mode, status, summary, step_count,
                        approval_required, created_at, updated_at, completed_at
                 FROM task_runs
                 ORDER BY created_at DESC, id DESC
@@ -1771,6 +2843,7 @@ class GnosysStore:
         limit: int = 50,
         schedule_id: str | None = None,
         task_run_id: str | None = None,
+        retry_of_run_id: str | None = None,
     ) -> list[dict[str, Any]]:
         query = [
             "SELECT id, schedule_id, schedule_name, target_type, target_ref, status, attempt_number, retry_of_run_id, task_run_id, requested_by, result_summary, last_error, created_at, updated_at, completed_at",
@@ -1784,6 +2857,9 @@ class GnosysStore:
         if task_run_id:
             conditions.append("task_run_id = ?")
             params.append(task_run_id)
+        if retry_of_run_id:
+            conditions.append("retry_of_run_id = ?")
+            params.append(retry_of_run_id)
         if conditions:
             query.append("WHERE " + " AND ".join(conditions))
         query.append("ORDER BY created_at DESC, id DESC")
@@ -1874,6 +2950,8 @@ class GnosysStore:
         tasks = self.list_tasks()
         agents = self.list_agents()
         projects = self.list_projects()
+        project_threads = self.list_project_threads()
+        chat_sessions = self.list_chat_sessions()
         skills = self.list_skills()
         schedules = self.list_schedules()
         memory_layers = self.list_memory_layers()
@@ -1900,6 +2978,8 @@ class GnosysStore:
             "tasks": tasks,
             "agents": agents,
             "projects": projects,
+            "project_threads": project_threads,
+            "chat_sessions": chat_sessions,
             "skills": skills,
             "schedules": schedules,
             "memory_layers": memory_layers,
@@ -1914,7 +2994,10 @@ class GnosysStore:
                 "tasks": len(tasks),
                 "agents": len(agents),
                 "projects": self.count_projects(),
+                "project_threads": self.count_project_threads(),
+                "chat_sessions": self.count_chat_sessions(),
                 "skills": self.count_skills(),
+                "skill_test_runs": self.count_skill_test_runs(),
                 "schedules": self.count_schedules(),
                 "memory_layers": len(memory_layers),
                 "memory_items": self.count_memory_items(),

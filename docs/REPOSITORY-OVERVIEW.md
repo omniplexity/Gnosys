@@ -11,7 +11,7 @@ This repository houses the current Gnosys implementation: a desktop agent worksp
 - `CONTRIBUTING.md` - contribution guidance
 - `RELEASE.md` - release and versioning policy
 - `apps/desktop/` - desktop console application
-- `apps/backend/` - FastAPI backend, store, memory, runtime, and policy layers
+- `apps/backend/` - FastAPI backend, store, memory, runtime, policy, routers, and services
 - `packages/shared/` - shared domain package and seed data
 - `docs/` - product, architecture, roadmap, status, and audit documentation
 
@@ -28,6 +28,7 @@ This repository houses the current Gnosys implementation: a desktop agent worksp
 - persists core entities to SQLite
 - enforces policy and approval controls
 - runs memory, orchestration, scheduling, and diagnostics APIs
+- separates HTTP routers from backend services so scheduler, approval, and replay logic can evolve without further centralizing `app.py`
 
 ### Shared package
 

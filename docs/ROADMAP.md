@@ -2,123 +2,153 @@
 
 ## Purpose
 
-This roadmap tracks the transition from the operational core to a more mature autonomous desktop platform.
+This document tracks the directional roadmap from the current local-first master-agent product core to the first usable "agentic OS" beta.
 
-## Completed layers
+Use `IMPLEMENTATION-STATUS.md` for factual status and `DELIVERY-PLAN.md` for the concrete next execution order.
 
-- repository and workspace scaffold
-- desktop shell and shared package setup
-- SQLite persistence and event log
-- memory retrieval and consolidation
-- orchestration and worker spawning
-- tasks, projects, agents, skills, and schedules CRUD
-- autonomy and approval controls
-- project-scoped policy routing
-- schedule execution and retry flows
-- replay diagnostics and memory review workflows
+## Product north star
 
-## Current stage
+Gnosys should become:
 
-Gnosys is now past the scaffolding phase and into the operational core stage.
+- a local-first master-agent workstation
+- centered on a persistent personal chat presence
+- backed by durable memory, identity, reflection, and semantic retrieval
+- able to delegate work across a fixed specialist team
+- eventually expandable through skills and custom tools without losing inspectability
 
-- the product already works end-to-end for core workflows
-- the missing pieces are depth, hardening, and automation maturity
-- the remaining layers should refine behavior rather than define the product from scratch
+## Completed roadmap slices
 
-## Next roadmap layers
+### v0.0.1 - Real master chat
 
-### Layer 1 - Schedule automation maturity
+Completed.
 
-- always-on schedule runner
-- recurring execution lifecycle
-- retries, backoff, and failure notifications
-- schedule history and execution visibility
-- approval-aware scheduled launches
+- persistent chat sessions and chat messages
+- session send/respond flow
+- canonical chat thread rendering
 
-Exit criteria:
+### v0.0.2 - Master agent execution loop
 
-- schedules can run without manual triggering
-- failures are visible and actionable
-- scheduled tasks are observable in the same run history model as interactive work
+Completed at the first product level.
 
-### Layer 2 - Memory governance
+- master-agent decision object
+- structured delegation steps
+- fixed specialist team routing
+- in-thread delegation visibility
 
-- explicit candidate review rules
-- contradiction detection and resolution
-- pinning and forgetting controls
-- promotion thresholds and validation scoring
-- memory regression checks
+### v0.0.3 - Self-learning session core
 
-Exit criteria:
+Completed at the first governed level.
 
-- durable memory promotion is explainable and repeatable
-- stale or conflicting memories can be handled intentionally
-- memory behavior can be tested
+- session reflections
+- candidate memory generation
+- daily memory rollups
+- governed identity proposals
 
-### Layer 3 - Skill lifecycle
+### v0.0.4 - Project/thread productivity foundation
 
-- authored skill editor improvements
-- learned skill drafts
-- skill testing pipeline
-- promotion and rollback
-- project-scoped skill routing
+Completed at the backend foundation level, intentionally narrowed at the primary chat UX level.
 
-Exit criteria:
+- routed attachments
+- context-aware storage paths
+- personal/project/project-thread backend mode support
+- personal-only primary chat product model
 
-- skills can move through a visible lifecycle
-- failed skill experiments do not contaminate the stable skill set
+## Active roadmap slices
 
-### Layer 4 - Diagnostics and replay
+### v0.0.5 - Skill learning and recursive improvement
 
-- richer run timelines
-- output diffing across runs
-- agent-by-agent replay views
-- search and filtering over historical runs
-- metrics around latency, failures, and cost
+Goal:
+
+Turn repeated successful work into governed reusable skills that affect future execution.
+
+Scope:
+
+- detect repeatable workflows from runs and chat sessions
+- generate learned-skill drafts from repeated patterns
+- test learned drafts against scenarios
+- promote passing skills into the stable set
+- support recursive skill revision with comparison and rollback
 
 Exit criteria:
 
-- users can inspect how a run unfolded without opening raw logs only
-- comparisons across runs are actionable
+- repeated work can produce a skill proposal
+- proposed skills can be tested and promoted
+- promoted skills are visible in future orchestration decisions
 
-### Layer 5 - Policy UX
+### v0.0.6 - Memory browser and memory operations
 
-- project policy inheritance editor
-- explicit risk labels for actions
-- better approval reasons and remediation notes
-- clearer autonomy mode state in the desktop UI
+Goal:
 
-Exit criteria:
+Expose memory as a clear product surface instead of only a review/diagnostics subsystem.
 
-- policy behavior is understandable without reading backend code
-- users can tell why an action was gated or allowed
+Scope:
 
-### Layer 6 - Evaluation and intelligence
-
-- formal memory retrieval benchmarks
-- delegation quality benchmarks
-- procedural learning evals
-- skill promotion tests
-- memory and agent regression suites
+- dedicated memory browser
+- daily vs long-term vs pinned vs candidate segmentation
+- searchable and explainable memory results
+- contradiction review and resolution UX
 
 Exit criteria:
 
-- changes to the system can be measured against a repeatable baseline
-- product improvements can be validated instead of inferred
+- users can browse and manage memory intentionally
+- surfaced memories explain why they were retrieved
 
-### Layer 7 - Advanced automation
+### Personal session management pass
 
-- browser automation
-- desktop action automation
-- deeper recursive planning modes
-- branch comparison and arbitration among worker outputs
-- learned workflow extraction
+Goal:
+
+Make the chat surface feel like a real persistent presence that users can leave and return to.
+
+Scope:
+
+- cleaner session switching
+- start-new-session flow
+- previous-session context preservation and summary cues
+- clearer continuity between archived/previous/current session state
 
 Exit criteria:
 
-- the platform can support more autonomous operational work without losing inspectability
+- switching or starting a new session feels deliberate and low-friction
+- the product preserves continuity without cluttering the thread
 
-## Notes
+### v0.0.7 - Extensibility layer
 
-- The roadmap should be kept aligned with the implementation status document.
-- If a layer becomes partially implemented, mark it there first and update this roadmap second.
+Goal:
+
+Let Gnosys register and invoke custom tools through a stable local-first contract.
+
+Scope:
+
+- tool registry
+- typed input/output schemas
+- execution scope and approval metadata
+- replay and diagnostics visibility for tool calls
+
+Exit criteria:
+
+- tools can be added without changing the orchestration core
+- tool use remains auditable and policy-aware
+
+### v0.1.0 - Agentic OS beta
+
+Goal:
+
+Ship the first version that coherently combines:
+
+- personal persistent chat
+- memory continuity
+- skill-backed execution
+- governed extensibility
+- supporting operational surfaces
+
+Exit criteria:
+
+- the product feels like one workstation rather than a set of admin surfaces
+- the master agent can maintain continuity, do work, learn, and improve over time
+
+## Roadmap notes
+
+- Keep the personal chat model central.
+- Do not turn the main chat into a project/thread control panel.
+- Push project and thread productivity into supporting workflows unless they can be integrated without clutter.
+- Prefer behavior depth over UI breadth.

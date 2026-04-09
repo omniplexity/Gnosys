@@ -19,6 +19,12 @@ The repository now implements the architecture at a core-product level rather th
 - `apps/backend/` owns the backend runtime, memory engine, policy layer, and persistence
 - `packages/shared/` owns shared domain types and seed data
 
+Backend implementation note:
+
+- route registration is now split across `routers/`
+- operational business logic is moving into `services/`
+- `app.py` should stay the composition root, not the place where scheduler, approval, replay, and diagnostics logic accumulates
+
 Implemented subsystems:
 
 - desktop application shell
@@ -225,6 +231,12 @@ Schedule service responsibilities:
 - trigger task creation or execution
 - record run history
 - manage retries and failure alerts
+
+Current backend shape:
+
+- `services/scheduler_service.py` owns schedule dispatch, approval queuing, retry/backoff evaluation, next-run computation, and runner support seams
+- the schedule runner/daemon is intentionally thin and delegates lifecycle behavior to the scheduler service
+- manual run, retry, approval-gated execution, and replay visibility remain part of the same schedule subsystem rather than separate ad hoc code paths
 
 ## 9. Tool Execution Layer
 

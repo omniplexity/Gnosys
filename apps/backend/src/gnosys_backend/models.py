@@ -1,8 +1,12 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
+
+
+ApprovalPolicyValue = Literal["inherit", "require_approval", "autonomous"]
+FailurePolicyValue = Literal["retry_once", "fail_fast", "retry_twice"]
 
 
 class HealthResponse(BaseModel):
@@ -60,6 +64,9 @@ class TaskRunRecord(BaseModel):
     task_id: str
     objective: str
     requested_by: str
+    project_id: str | None = None
+    project_thread_id: str | None = None
+    chat_session_id: str | None = None
     mode: str
     status: str
     summary: str
@@ -122,6 +129,7 @@ class ProjectListItem(BaseModel):
     summary: str
     status: str
     owner: str
+    workspace_path: str
     created_at: str
     updated_at: str
 
@@ -129,12 +137,18 @@ class ProjectListItem(BaseModel):
 class SkillListItem(BaseModel):
     id: str
     project_id: str | None = None
+    parent_skill_id: str | None = None
+    promoted_from_skill_id: str | None = None
+    latest_test_run_id: str | None = None
     name: str
     description: str
     scope: str
     version: str
     source_type: str
     status: str
+    test_status: str = "untested"
+    test_score: float = 0.0
+    test_summary: str = ""
     created_at: str
     updated_at: str
 
@@ -148,8 +162,8 @@ class ScheduleListItem(BaseModel):
     schedule_expression: str
     timezone: str
     enabled: bool
-    approval_policy: str
-    failure_policy: str
+    approval_policy: ApprovalPolicyValue
+    failure_policy: FailurePolicyValue
     last_run_at: str | None = None
     next_run_at: str | None = None
     created_at: str
@@ -162,8 +176,167 @@ class ProjectRecord(BaseModel):
     summary: str
     status: str
     owner: str
+    workspace_path: str
     created_at: str
     updated_at: str
+
+
+class ProjectThreadRecord(BaseModel):
+    id: str
+    project_id: str
+    title: str
+    summary: str
+    status: str
+    context_path: str
+    created_at: str
+    updated_at: str
+
+
+class ProjectThreadCreateRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    title: str = Field(min_length=1)
+    summary: str = Field(default="")
+    status: str = Field(default="Open")
+
+
+class ProjectThreadUpdateRequest(BaseModel):
+    title: str = Field(min_length=1)
+    summary: str = Field(default="")
+    status: str = Field(default="Open")
+
+
+class ChatSessionRecord(BaseModel):
+    id: str
+    title: str
+    summary: str
+    status: str
+    context_path: str
+    agent_path: str
+    soul_path: str
+    identity_path: str
+    heartbeat_path: str
+    created_at: str
+    updated_at: str
+
+
+class ChatSessionCreateRequest(BaseModel):
+    title: str = Field(min_length=1)
+    summary: str = Field(default="")
+    status: str = Field(default="Active")
+
+
+class ChatSessionUpdateRequest(BaseModel):
+    title: str = Field(min_length=1)
+    summary: str = Field(default="")
+    status: str = Field(default="Active")
+
+
+class ChatMessageRecord(BaseModel):
+    id: str
+    chat_session_id: str
+    role: Literal["user", "assistant", "system", "tool"]
+    kind: Literal["message", "event", "reflection"]
+    content: str
+    task_run_id: str | None = None
+    agent_run_ids: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: str
+
+
+class ChatMessageCreateRequest(BaseModel):
+    role: Literal["user", "assistant", "system", "tool"] = Field(default="user")
+    kind: Literal["message", "event", "reflection"] = Field(default="message")
+    content: str = Field(min_length=1)
+    task_run_id: str | None = None
+    agent_run_ids: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+ChatContextMode = Literal["personal", "project", "project-thread"]
+
+
+class ChatAttachmentRecord(BaseModel):
+    id: str
+    chat_session_id: str
+    mode: ChatContextMode
+    project_id: str | None = None
+    project_thread_id: str | None = None
+    original_name: str
+    stored_name: str
+    content_type: str
+    size_bytes: int
+    storage_path: str
+    created_at: str
+
+
+class ChatSessionSendRequest(BaseModel):
+    content: str = Field(min_length=1)
+    requested_by: str = Field(default="desktop")
+    selected_model: str | None = None
+    reasoning_strength: str | None = None
+    mode: ChatContextMode = Field(default="personal")
+    project_id: str | None = None
+    project_thread_id: str | None = None
+    attachment_ids: list[str] = Field(default_factory=list)
+
+
+class OrchestrationStepRecord(BaseModel):
+    intent: str
+    objective: str
+    assigned_agent: str
+    approval_note: str
+    rationale: str = ""
+    spawn_worker: bool = False
+
+
+class OrchestrationDecisionRecord(BaseModel):
+    intent_classification: str
+    execution_mode: Literal["answer-only", "task-created"]
+    delegated_specialists: list[str] = Field(default_factory=list)
+    invoked_skills: list[str] = Field(default_factory=list)
+    approvals_triggered: bool = False
+    synthesis: str
+
+
+class ChatSessionSendResponse(BaseModel):
+    user_message: ChatMessageRecord
+    assistant_message: ChatMessageRecord
+    generated_messages: list[ChatMessageRecord] = Field(default_factory=list)
+    task_run: TaskRunRecord | None = None
+    agent_runs: list[AgentRunRecord] = Field(default_factory=list)
+    approval_request: ApprovalRequestRecord | None = None
+    decision: OrchestrationDecisionRecord
+
+
+class SessionReflectionRecord(BaseModel):
+    id: str
+    chat_session_id: str
+    summary: str
+    user_preferences: list[str] = Field(default_factory=list)
+    working_style: list[str] = Field(default_factory=list)
+    recurring_goals: list[str] = Field(default_factory=list)
+    personal_context: list[str] = Field(default_factory=list)
+    identity_refinements: list[str] = Field(default_factory=list)
+    source_message_ids: list[str] = Field(default_factory=list)
+    created_at: str
+
+
+class IdentityProposalRecord(BaseModel):
+    id: str
+    chat_session_id: str
+    target_file: str
+    proposal_kind: str
+    rationale: str
+    proposed_content: str
+    status: str
+    created_at: str
+    updated_at: str
+
+
+class SessionReflectionResponse(BaseModel):
+    reflection: SessionReflectionRecord
+    memory_items: list[MemoryItemRecord] = Field(default_factory=list)
+    identity_proposals: list[IdentityProposalRecord] = Field(default_factory=list)
 
 
 class ProjectCreateRequest(BaseModel):
@@ -183,12 +356,18 @@ class ProjectUpdateRequest(BaseModel):
 class SkillRecord(BaseModel):
     id: str
     project_id: str | None = None
+    parent_skill_id: str | None = None
+    promoted_from_skill_id: str | None = None
+    latest_test_run_id: str | None = None
     name: str
     description: str
     scope: str
     version: str
     source_type: str
     status: str
+    test_status: str = "untested"
+    test_score: float = 0.0
+    test_summary: str = ""
     created_at: str
     updated_at: str
 
@@ -211,6 +390,12 @@ class SkillUpdateRequest(BaseModel):
     source_type: str = Field(default="authored")
     status: str = Field(default="draft")
     project_id: str | None = None
+    parent_skill_id: str | None = None
+    promoted_from_skill_id: str | None = None
+    latest_test_run_id: str | None = None
+    test_status: str | None = None
+    test_score: float | None = None
+    test_summary: str | None = None
 
 
 class ScheduleRecord(BaseModel):
@@ -222,8 +407,8 @@ class ScheduleRecord(BaseModel):
     schedule_expression: str
     timezone: str
     enabled: bool
-    approval_policy: str
-    failure_policy: str
+    approval_policy: ApprovalPolicyValue
+    failure_policy: FailurePolicyValue
     last_run_at: str | None = None
     next_run_at: str | None = None
     created_at: str
@@ -300,8 +485,8 @@ class ScheduleCreateRequest(BaseModel):
     schedule_expression: str = Field(min_length=1)
     timezone: str = Field(default="America/New_York")
     enabled: bool = Field(default=True)
-    approval_policy: str = Field(default="inherit")
-    failure_policy: str = Field(default="retry_once")
+    approval_policy: ApprovalPolicyValue = Field(default="inherit")
+    failure_policy: FailurePolicyValue = Field(default="retry_once")
     project_id: str | None = None
     last_run_at: str | None = None
     next_run_at: str | None = None
@@ -314,8 +499,8 @@ class ScheduleUpdateRequest(BaseModel):
     schedule_expression: str = Field(min_length=1)
     timezone: str = Field(default="America/New_York")
     enabled: bool = Field(default=True)
-    approval_policy: str = Field(default="inherit")
-    failure_policy: str = Field(default="retry_once")
+    approval_policy: ApprovalPolicyValue = Field(default="inherit")
+    failure_policy: FailurePolicyValue = Field(default="retry_once")
     project_id: str | None = None
     last_run_at: str | None = None
     next_run_at: str | None = None
@@ -327,6 +512,7 @@ class MemoryItemRecord(BaseModel):
     scope: str
     project_id: str | None = None
     state: str
+    pinned: bool = False
     title: str
     summary: str
     content: str
@@ -340,6 +526,10 @@ class MemoryItemRecord(BaseModel):
     last_accessed_at: str | None = None
     score: float | None = None
     reason: str | None = None
+    recommended_action: str | None = None
+    review_reason: str | None = None
+    signature: str | None = None
+    conflict_count: int | None = None
 
 
 class EventRecord(BaseModel):
@@ -395,11 +585,66 @@ class MemoryConsolidationResponse(BaseModel):
     reviewed: int
     promoted: int
     archived: int
+    contradictions: int = 0
+
+
+class MemoryContradictionRecord(BaseModel):
+    signature: str
+    item_count: int
+    item_ids: list[str]
+    item_titles: list[str]
+    item_states: list[str]
+    pinned_item_id: str | None = None
+    winner_item_id: str | None = None
+    recommended_resolution: str
+    reason: str
 
 
 class MemoryReviewResponse(BaseModel):
     candidate_count: int
+    pinned_count: int
+    contradiction_count: int
     items: list[MemoryItemRecord]
+    contradictions: list[MemoryContradictionRecord]
+
+
+class MemoryBrowseResponse(BaseModel):
+    query: str | None = None
+    project_id: str | None = None
+    total_count: int
+    daily_memories: list[MemoryItemRecord]
+    long_term_memories: list[MemoryItemRecord]
+    pinned_memories: list[MemoryItemRecord]
+    candidate_memories: list[MemoryItemRecord]
+    contradictions: list[MemoryContradictionRecord]
+
+
+class SkillTestRunRecord(BaseModel):
+    id: str
+    skill_id: str
+    scenario: str
+    expected_outcome: str
+    observed_outcome: str
+    passed: bool
+    score: float
+    summary: str
+    requested_by: str
+    created_at: str
+
+
+class SkillLifecycleRecord(BaseModel):
+    skill: SkillRecord
+    parent_skill: SkillRecord | None = None
+    related_skills: list[SkillRecord]
+    test_runs: list[SkillTestRunRecord]
+    lifecycle_state: str
+    ready_for_promotion: bool
+
+
+class SkillTestRequest(BaseModel):
+    scenario: str = Field(min_length=1)
+    expected_outcome: str = Field(min_length=1)
+    requested_by: str = Field(default="ui")
 
 
 class OrchestrationLaunchRequest(BaseModel):
@@ -407,6 +652,9 @@ class OrchestrationLaunchRequest(BaseModel):
     task_title: str | None = None
     task_summary: str | None = None
     task_id: str | None = None
+    project_id: str | None = None
+    project_thread_id: str | None = None
+    chat_session_id: str | None = None
     requested_by: str = Field(default="user")
     mode: str = Field(default="Supervised")
     priority: str = Field(default="High")
@@ -416,9 +664,10 @@ class OrchestrationLaunchResponse(BaseModel):
     task: TaskRecord
     task_run: TaskRunRecord
     agent_runs: list[AgentRunRecord]
-    steps: list[dict[str, str]]
+    steps: list[OrchestrationStepRecord]
     approvals_required: list[str]
     summary: str
+    decision: OrchestrationDecisionRecord
 
 
 class OrchestrationRunResponse(BaseModel):
@@ -476,6 +725,30 @@ class ReplayComparisonRecord(BaseModel):
     summary_changed: bool
     step_count_delta: int
     approval_required_changed: bool
+    task_summary_changed: bool = False
+    agent_run_count_delta: int = 0
+    schedule_run_count_delta: int = 0
+    timeline_entry_count_delta: int = 0
+
+
+class DiagnosticsMetricsRecord(BaseModel):
+    total_task_runs: int
+    filtered_task_runs: int
+    total_agent_runs: int
+    total_schedule_runs: int
+    completed_task_runs: int
+    failed_task_runs: int
+    approval_required_task_runs: int
+
+
+class DiagnosticsRunListResponse(BaseModel):
+    task_runs: list[TaskRunRecord]
+    query: str | None = None
+    status: str | None = None
+    approval_required: bool | None = None
+    total_count: int
+    filtered_count: int
+    metrics: DiagnosticsMetricsRecord
 
 
 class WorkspaceSnapshotResponse(BaseModel):
@@ -483,6 +756,8 @@ class WorkspaceSnapshotResponse(BaseModel):
     tasks: list[TaskRecord]
     agents: list[AgentRecord]
     projects: list[ProjectListItem]
+    project_threads: list[ProjectThreadRecord]
+    chat_sessions: list[ChatSessionRecord]
     skills: list[SkillListItem]
     schedules: list[ScheduleListItem]
     memory_layers: list[MemoryLayerRecord]

@@ -10,6 +10,8 @@ export type NavSection =
 
 export type TaskStatus = 'Inbox' | 'Planned' | 'Running' | 'Waiting' | 'Needs Approval' | 'Completed' | 'Failed';
 export type AgentStatus = 'Idle' | 'Working' | 'Waiting' | 'Reviewing';
+export type ScheduleApprovalPolicy = 'inherit' | 'require_approval' | 'autonomous';
+export type ScheduleFailurePolicy = 'retry_once' | 'fail_fast' | 'retry_twice';
 
 export interface Task {
   id: string;
@@ -33,19 +35,97 @@ export interface Project {
   summary: string;
   status: 'Active' | 'Planned' | 'Archived';
   owner: string;
+  workspace_path: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface ProjectThread {
+  id: string;
+  project_id: string;
+  title: string;
+  summary: string;
+  status: 'Open' | 'Paused' | 'Archived';
+  context_path: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ChatSession {
+  id: string;
+  title: string;
+  summary: string;
+  status: 'Active' | 'Paused' | 'Archived';
+  context_path: string;
+  agent_path: string;
+  soul_path: string;
+  identity_path: string;
+  heartbeat_path: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  chat_session_id: string;
+  role: 'user' | 'assistant' | 'system' | 'tool';
+  kind: 'message' | 'event' | 'reflection';
+  content: string;
+  task_run_id?: string | null;
+  agent_run_ids: string[];
+  metadata?: Record<string, unknown>;
+  created_at: string;
+}
+
+export type ChatContextMode = 'personal' | 'project' | 'project-thread';
+
+export interface ChatAttachment {
+  id: string;
+  chat_session_id: string;
+  mode: ChatContextMode;
+  project_id?: string | null;
+  project_thread_id?: string | null;
+  original_name: string;
+  stored_name: string;
+  content_type: string;
+  size_bytes: number;
+  storage_path: string;
+  created_at: string;
+}
+
+export interface OrchestrationStep {
+  intent: string;
+  objective: string;
+  assigned_agent: string;
+  approval_note: string;
+  rationale: string;
+  spawn_worker: boolean;
+}
+
+export interface OrchestrationDecision {
+  intent_classification: string;
+  execution_mode: 'answer-only' | 'task-created';
+  delegated_specialists: string[];
+  invoked_skills: string[];
+  approvals_triggered: boolean;
+  synthesis: string;
 }
 
 export interface Skill {
   id: string;
   project_id?: string | null;
+  parent_skill_id?: string | null;
+  promoted_from_skill_id?: string | null;
+  latest_test_run_id?: string | null;
   name: string;
   description: string;
   scope: 'workspace' | 'project' | 'session' | 'user';
   version: string;
   source_type: 'authored' | 'learned';
   status: 'draft' | 'active' | 'archived';
+  test_status?: 'untested' | 'passed' | 'failed';
+  test_score?: number;
+  test_summary?: string;
   created_at: string;
   updated_at: string;
 }
@@ -59,8 +139,8 @@ export interface Schedule {
   schedule_expression: string;
   timezone: string;
   enabled: boolean;
-  approval_policy: 'inherit' | 'require_approval' | 'autonomous';
-  failure_policy: 'retry_once' | 'fail_fast' | 'retry_twice';
+  approval_policy: ScheduleApprovalPolicy;
+  failure_policy: ScheduleFailurePolicy;
   last_run_at: string | null;
   next_run_at: string | null;
   created_at: string;
@@ -72,6 +152,9 @@ export interface TaskRun {
   task_id: string;
   objective: string;
   requested_by: string;
+  project_id: string | null;
+  project_thread_id: string | null;
+  chat_session_id: string | null;
   mode: string;
   status: string;
   summary: string;
@@ -117,6 +200,7 @@ export interface MemoryItem {
   scope: 'workspace' | 'project' | 'session' | 'user';
   project_id?: string | null;
   state: MemoryState;
+  pinned?: boolean;
   title: string;
   summary: string;
   confidence: number;
@@ -138,6 +222,38 @@ export interface MemoryRetrievalResult {
   trace: MemoryRetrievalStep[];
 }
 
+export interface MemoryContradiction {
+  signature: string;
+  item_count: number;
+  item_ids: string[];
+  item_titles: string[];
+  item_states: string[];
+  pinned_item_id: string | null;
+  winner_item_id: string | null;
+  recommended_resolution: string;
+  reason: string;
+}
+
+export interface MemoryBrowseResult {
+  query: string | null;
+  project_id: string | null;
+  total_count: number;
+  daily_memories: MemoryItem[];
+  long_term_memories: MemoryItem[];
+  pinned_memories: MemoryItem[];
+  candidate_memories: Array<
+    MemoryItem & {
+      score?: number;
+      reason?: string | null;
+      recommended_action?: string | null;
+      review_reason?: string | null;
+      signature?: string | null;
+      conflict_count?: number | null;
+    }
+  >;
+  contradictions: MemoryContradiction[];
+}
+
 export interface WorkspaceSummary {
   name: string;
   mode: 'Manual' | 'Supervised' | 'Autonomous' | 'Full Access';
@@ -146,7 +262,8 @@ export interface WorkspaceSummary {
   approval_bias: string;
   mode_label: string;
   status: 'Bootstrapping' | 'Healthy' | 'Degraded';
-  activeProject: string;
+  active_project: string;
+  phase: string;
 }
 
 export const navSections: NavSection[] = [
@@ -160,6 +277,9 @@ export const navSections: NavSection[] = [
   'Settings'
 ];
 
+export const scheduleApprovalPolicies: ScheduleApprovalPolicy[] = ['inherit', 'require_approval', 'autonomous'];
+export const scheduleFailurePolicies: ScheduleFailurePolicy[] = ['retry_once', 'fail_fast', 'retry_twice'];
+
 export const workspaceSummary: WorkspaceSummary = {
   name: 'Gnosys',
   mode: 'Supervised',
@@ -168,8 +288,123 @@ export const workspaceSummary: WorkspaceSummary = {
   approval_bias: 'supervised',
   mode_label: 'Global autonomy and approval policy',
   status: 'Bootstrapping',
-  activeProject: 'Core Console'
+  active_project: 'Core Console',
+  phase: 'Orchestration runtime foundation'
 };
+
+export interface ScheduleRun {
+  id: string;
+  schedule_id: string;
+  schedule_name: string;
+  target_type: string;
+  target_ref: string;
+  status: string;
+  attempt_number: number;
+  retry_of_run_id: string | null;
+  task_run_id: string | null;
+  requested_by: string;
+  result_summary: string;
+  last_error: string | null;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+}
+
+export interface TimelineEntry {
+  kind: string;
+  label: string;
+  detail: string;
+  created_at: string;
+  source_id: string | null;
+}
+
+export interface RunComparison {
+  previous_task_run_id: string | null;
+  status_changed: boolean;
+  summary_changed: boolean;
+  step_count_delta: number;
+  approval_required_changed: boolean;
+  task_summary_changed: boolean;
+  agent_run_count_delta: number;
+  schedule_run_count_delta: number;
+  timeline_entry_count_delta: number;
+}
+
+export interface ApprovalRequest {
+  id: string;
+  action: string;
+  subject_type: string;
+  subject_ref: string;
+  sensitivity: string;
+  status: string;
+  reason: string;
+  payload: Record<string, unknown>;
+  requested_by: string;
+  created_at: string;
+  updated_at: string;
+  resolved_at: string | null;
+  resolved_by: string | null;
+}
+
+export interface EntityPolicy {
+  entity_type: string;
+  entity_id: string;
+  project_id: string | null;
+  autonomy_mode: string;
+  kill_switch: boolean;
+  approval_bias: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RecentEvent {
+  id: number;
+  type: string;
+  source: string;
+  payload: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface WorkspaceCounts {
+  tasks: number;
+  agents: number;
+  projects: number;
+  project_threads: number;
+  chat_sessions: number;
+  skills: number;
+  schedules: number;
+  memory_layers: number;
+  memory_items: number;
+  skill_test_runs: number;
+  task_runs: number;
+  agent_runs: number;
+  schedule_runs: number;
+  approval_requests: number;
+  entity_policies: number;
+  events: number;
+}
+
+export interface WorkspaceSnapshot {
+  workspace: WorkspaceSummary;
+  tasks: Task[];
+  agents: Agent[];
+  projects: Project[];
+  project_threads: ProjectThread[];
+  chat_sessions: ChatSession[];
+  skills: Skill[];
+  schedules: Schedule[];
+  memory_layers: MemoryLayer[];
+  memory_items: MemoryItem[];
+  task_runs: TaskRun[];
+  agent_runs: AgentRun[];
+  schedule_runs: ScheduleRun[];
+  timeline: TimelineEntry[];
+  comparison: RunComparison | null;
+  approval_requests: ApprovalRequest[];
+  entity_policies: EntityPolicy[];
+  recent_events: RecentEvent[];
+  counts: WorkspaceCounts;
+}
 
 export const seedTasks: Task[] = [
   {
@@ -212,6 +447,7 @@ export const seedProjects: Project[] = [
     summary: 'Foundation workspace for the desktop, backend, memory, and orchestration layers.',
     status: 'Active',
     owner: 'Gnosys',
+    workspace_path: 'C:/Users/storm/Desktop/Gnosys/workspaces/core-console',
     created_at: '2026-04-06T00:00:00Z',
     updated_at: '2026-04-06T00:00:00Z'
   },
@@ -221,6 +457,36 @@ export const seedProjects: Project[] = [
     summary: 'Implement editable surfaces for tasks, projects, agents, skills, and schedules.',
     status: 'Planned',
     owner: 'Gnosys',
+    workspace_path: 'C:/Users/storm/Desktop/Gnosys/workspaces/phase-4-crud',
+    created_at: '2026-04-06T00:00:00Z',
+    updated_at: '2026-04-06T00:00:00Z'
+  }
+];
+
+export const seedProjectThreads: ProjectThread[] = [
+  {
+    id: 'thread-001',
+    project_id: 'project-001',
+    title: 'Core runtime planning',
+    summary: 'Track execution design and storage work for the core console.',
+    status: 'Open',
+    context_path: 'C:/Users/storm/Desktop/Gnosys/workspaces/core-console/threads/core-runtime-planning',
+    created_at: '2026-04-06T00:00:00Z',
+    updated_at: '2026-04-06T00:00:00Z'
+  }
+];
+
+export const seedChatSessions: ChatSession[] = [
+  {
+    id: 'session-001',
+    title: 'Main agent thread',
+    summary: 'Default non-project orchestration conversation.',
+    status: 'Active',
+    context_path: 'C:/Users/storm/Desktop/Gnosys/agent/main-thread',
+    agent_path: 'C:/Users/storm/Desktop/Gnosys/agent/main-thread/AGENT.md',
+    soul_path: 'C:/Users/storm/Desktop/Gnosys/agent/main-thread/SOUL.md',
+    identity_path: 'C:/Users/storm/Desktop/Gnosys/agent/main-thread/IDENTITY.md',
+    heartbeat_path: 'C:/Users/storm/Desktop/Gnosys/agent/main-thread/HEARTBEAT.md',
     created_at: '2026-04-06T00:00:00Z',
     updated_at: '2026-04-06T00:00:00Z'
   }
@@ -235,6 +501,9 @@ export const seedSkills: Skill[] = [
     version: '0.1.0',
     source_type: 'authored',
     status: 'active',
+    test_status: 'passed',
+    test_score: 0.97,
+    test_summary: 'Stable authored skill in active use.',
     created_at: '2026-04-06T00:00:00Z',
     updated_at: '2026-04-06T00:00:00Z'
   },
@@ -246,6 +515,9 @@ export const seedSkills: Skill[] = [
     version: '0.1.0',
     source_type: 'authored',
     status: 'active',
+    test_status: 'passed',
+    test_score: 0.95,
+    test_summary: 'Stable authored skill in active use.',
     created_at: '2026-04-06T00:00:00Z',
     updated_at: '2026-04-06T00:00:00Z'
   }
@@ -297,6 +569,7 @@ export const seedMemoryItems: MemoryItem[] = [
     layer: 'Active Context',
     scope: 'session',
     state: 'validated',
+    pinned: true,
     title: 'Phase 1 completed',
     summary: 'SQLite persistence and append-only event logging are live in the backend.',
     confidence: 0.99,
@@ -309,6 +582,7 @@ export const seedMemoryItems: MemoryItem[] = [
     layer: 'Semantic',
     scope: 'workspace',
     state: 'validated',
+    pinned: false,
     title: 'Phase 2 target',
     summary: 'Build the memory engine with scoped retrieval and explanation traces.',
     confidence: 0.94,
@@ -321,6 +595,7 @@ export const seedMemoryItems: MemoryItem[] = [
     layer: 'Episodic',
     scope: 'project',
     state: 'candidate',
+    pinned: false,
     title: 'Retrieval audit note',
     summary: 'Inspect why a memory item was surfaced before it becomes durable.',
     confidence: 0.78,

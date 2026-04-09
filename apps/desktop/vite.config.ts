@@ -8,6 +8,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
   plugins: [react()],
   server: {
+    host: '127.0.0.1',
+    open: true,
     proxy: {
       '/api': 'http://127.0.0.1:8766'
     }

@@ -5,6 +5,7 @@ from typing import Any
 from uuid import uuid4
 
 from .policy import PolicyEngine
+from .skills import SkillEngine
 from .store import GnosysStore, utc_now
 
 
@@ -40,14 +41,16 @@ class OrchestrationResult:
     task: dict[str, Any]
     task_run: dict[str, Any]
     agent_runs: list[dict[str, Any]]
-    steps: list[dict[str, str]]
+    steps: list[dict[str, Any]]
     approvals_required: list[str]
     summary: str
+    decision: dict[str, Any]
 
 
 class OrchestrationEngine:
     def __init__(self, store: GnosysStore) -> None:
         self.store = store
+        self.skill_engine = SkillEngine(store)
 
     def launch(
         self,
@@ -59,10 +62,20 @@ class OrchestrationEngine:
         mode: str = "Supervised",
         priority: str = "High",
         task_id: str | None = None,
+        project_id: str | None = None,
+        project_thread_id: str | None = None,
+        chat_session_id: str | None = None,
         bypass_policy: bool = False,
     ) -> OrchestrationResult:
         objective = objective.strip()
-        task = self._ensure_task(task_id=task_id, objective=objective, task_title=task_title, task_summary=task_summary, priority=priority)
+        task = self._ensure_task(
+            task_id=task_id,
+            objective=objective,
+            task_title=task_title,
+            task_summary=task_summary,
+            priority=priority,
+            project_id=project_id,
+        )
         policy = PolicyEngine(self.store)
         if bypass_policy:
             approval_required = False
@@ -73,13 +86,21 @@ class OrchestrationEngine:
                 mutating=True,
             )
             approval_required = policy_decision.requires_approval
-        steps = self._build_steps(objective)
+        intent_classification = self._classify_intent(objective)
+        steps = self._build_steps(objective, intent_classification=intent_classification)
+        invoked_skills = self.skill_engine.find_matching_skills(objective, project_id=project_id, limit=3)
+        invoked_skill_names = [str(skill["name"]) for skill in invoked_skills]
+        if invoked_skill_names:
+            steps = self._apply_skill_guidance(steps, invoked_skill_names)
         summary = self._summarize_run(objective, steps, approval_required)
 
         task_run = self.store.create_task_run(
             task_id=task["id"],
             objective=objective,
             requested_by=requested_by,
+            project_id=project_id or task.get("project_id"),
+            project_thread_id=project_thread_id,
+            chat_session_id=chat_session_id,
             mode=mode,
             status="Needs Approval" if approval_required else "Running",
             summary=summary,
@@ -122,8 +143,11 @@ class OrchestrationEngine:
         approvals_required: list[str] = []
         specialist_count = 0
         worker_count = 0
+        delegated_specialists: list[str] = []
         for index, step in enumerate(steps, start=1):
             specialist = self._specialist_for_step(step["intent"], objective)
+            if specialist not in delegated_specialists and specialist != "Planner":
+                delegated_specialists.append(specialist)
             specialist_run = self._create_specialist_run(
                 task_run_id=task_run["id"],
                 parent_run_id=planner_run["id"],
@@ -136,7 +160,7 @@ class OrchestrationEngine:
             agent_runs.append(specialist_run)
             specialist_count += 1
 
-            if self._should_spawn_worker(step["objective"], objective):
+            if bool(step.get("spawn_worker")):
                 worker_run = self._spawn_worker(
                     task_run_id=task_run["id"],
                     parent_run_id=specialist_run["id"],
@@ -204,6 +228,18 @@ class OrchestrationEngine:
             },
         )
 
+        for skill in invoked_skills:
+            self.store.record_event(
+                event_type="skill.invoked",
+                source="orchestrator",
+                payload={
+                    "task_run_id": task_run["id"],
+                    "skill_id": skill["id"],
+                    "skill_name": skill["name"],
+                    "objective": objective,
+                },
+            )
+
         if approval_required:
             self.store.record_event(
                 event_type="approval.requested",
@@ -222,8 +258,26 @@ class OrchestrationEngine:
                 "task_run_id": task_run["id"],
                 "agent_runs": [run["id"] for run in agent_runs],
                 "worker_count": worker_count,
+                "delegated_specialists": delegated_specialists,
+                "intent_classification": intent_classification,
+                "invoked_skills": invoked_skill_names,
             },
         )
+
+        decision = {
+            "intent_classification": intent_classification,
+            "execution_mode": "task-created",
+            "delegated_specialists": delegated_specialists,
+            "invoked_skills": invoked_skill_names,
+            "approvals_triggered": approval_required,
+            "synthesis": self._build_synthesis(
+                objective,
+                delegated_specialists,
+                approval_required,
+                worker_count,
+                invoked_skill_names,
+            ),
+        }
 
         return OrchestrationResult(
             task=task,
@@ -232,6 +286,7 @@ class OrchestrationEngine:
             steps=steps,
             approvals_required=approvals_required,
             summary=summary,
+            decision=decision,
         )
 
     def list_runs(self, limit: int = 10) -> list[dict[str, Any]]:
@@ -258,6 +313,7 @@ class OrchestrationEngine:
         task_title: str | None,
         task_summary: str | None,
         priority: str,
+        project_id: str | None,
     ) -> dict[str, Any]:
         if task_id:
             task = self.store.get_task(task_id)
@@ -265,9 +321,21 @@ class OrchestrationEngine:
                 return task
         title = task_title or self._derive_task_title(objective)
         summary = task_summary or objective
-        return self.store.create_task(title=title, summary=summary, status="Inbox", priority=priority)
+        return self.store.create_task(title=title, summary=summary, status="Inbox", priority=priority, project_id=project_id)
 
-    def _build_steps(self, objective: str) -> list[dict[str, str]]:
+    def _classify_intent(self, objective: str) -> str:
+        lower = objective.lower()
+        if any(token in lower for token in ("schedule", "cron", "automation", "recurring")):
+            return "automation"
+        if any(token in lower for token in ("build", "implement", "code", "ship", "refactor", "fix")):
+            return "build"
+        if any(token in lower for token in ("research", "investigate", "analyze", "compare", "document")):
+            return "research"
+        if any(token in lower for token in ("review", "test", "validate", "audit", "verify")):
+            return "evaluation"
+        return "general"
+
+    def _build_steps(self, objective: str, *, intent_classification: str) -> list[dict[str, Any]]:
         lower = objective.lower()
         steps = [
             {
@@ -275,6 +343,8 @@ class OrchestrationEngine:
                 "objective": "Translate the request into an execution outline.",
                 "assigned_agent": "Planner",
                 "approval_note": "No approval gate",
+                "rationale": f"Master agent classified the request as {intent_classification} and is decomposing it into bounded work.",
+                "spawn_worker": False,
             }
         ]
         if any(token in lower for token in ("research", "investigate", "analyze", "compare", "document")):
@@ -284,6 +354,8 @@ class OrchestrationEngine:
                     "objective": "Gather context and verify source material.",
                     "assigned_agent": "Research Specialist",
                     "approval_note": "No approval gate",
+                    "rationale": "The request needs source gathering or comparison before synthesis.",
+                    "spawn_worker": True,
                 }
             )
         if any(token in lower for token in ("build", "implement", "code", "ship", "refactor", "scaffold")):
@@ -293,6 +365,8 @@ class OrchestrationEngine:
                     "objective": "Implement the requested change in bounded scope.",
                     "assigned_agent": "Builder Specialist",
                     "approval_note": "No approval gate",
+                    "rationale": "The request includes delivery or code-change language that warrants execution ownership.",
+                    "spawn_worker": True,
                 }
             )
         if any(token in lower for token in ("memory", "retrieve", "remember", "context")):
@@ -302,6 +376,8 @@ class OrchestrationEngine:
                     "objective": "Refresh scoped memory and validate retrieval bias.",
                     "assigned_agent": "Memory Steward",
                     "approval_note": "No approval gate",
+                    "rationale": "The request refers to continuity, memory, or scoped context retrieval.",
+                    "spawn_worker": False,
                 }
             )
         if any(token in lower for token in ("review", "test", "validate", "audit", "verify")) or len(steps) < 3:
@@ -311,6 +387,8 @@ class OrchestrationEngine:
                     "objective": "Critique the output and verify the result against expectations.",
                     "assigned_agent": "Critic / Evaluator",
                     "approval_note": "No approval gate",
+                    "rationale": "The master loop keeps a critic pass in the plan so execution remains inspectable and bounded.",
+                    "spawn_worker": len(objective) > 110,
                 }
             )
         if any(token in lower for token in ("schedule", "cron", "automation", "recurring")):
@@ -320,18 +398,44 @@ class OrchestrationEngine:
                     "objective": "Prepare the execution as a scheduled or repeatable run.",
                     "assigned_agent": "Operations / Scheduler",
                     "approval_note": "No approval gate",
+                    "rationale": "The request asks for repeatable or scheduled operation setup.",
+                    "spawn_worker": False,
                 }
             )
         return steps[:5]
 
-    def _should_spawn_worker(self, step_objective: str, objective: str) -> bool:
-        text = f"{step_objective} {objective}".lower()
-        worker_keywords = ("build", "implement", "research", "analyze", "refactor", "compare", "document")
-        return len(text) > 70 or any(keyword in text for keyword in worker_keywords)
-
-    def _summarize_run(self, objective: str, steps: list[dict[str, str]], approval_required: bool) -> str:
+    def _summarize_run(self, objective: str, steps: list[dict[str, Any]], approval_required: bool) -> str:
         status = "approval required" if approval_required else "ready for execution"
         return f"{len(steps)} step plan for: {objective[:120]} ({status})."
+
+    def _apply_skill_guidance(self, steps: list[dict[str, Any]], invoked_skill_names: list[str]) -> list[dict[str, Any]]:
+        guidance = ", ".join(invoked_skill_names)
+        guided_steps: list[dict[str, Any]] = []
+        for step in steps:
+            updated = dict(step)
+            updated["rationale"] = f"{step['rationale']} Active skills informing this step: {guidance}."
+            guided_steps.append(updated)
+        return guided_steps
+
+    def _build_synthesis(
+        self,
+        objective: str,
+        delegated_specialists: list[str],
+        approval_required: bool,
+        worker_count: int,
+        invoked_skills: list[str],
+    ) -> str:
+        specialist_summary = ", ".join(delegated_specialists) if delegated_specialists else "the fixed specialist team"
+        state = "awaiting approval" if approval_required else "active"
+        worker_summary = f"{worker_count} worker" if worker_count == 1 else f"{worker_count} workers"
+        skill_summary = ""
+        if invoked_skills:
+            skill_summary = f" Active skills in play: {', '.join(invoked_skills)}."
+        return (
+            f"Master agent routed this request through {specialist_summary}. "
+            f"The execution plan is {state} and currently fans out to {worker_summary} where bounded delivery helps."
+            f"{skill_summary}"
+        )
 
     def _derive_task_title(self, objective: str) -> str:
         words = [word for word in objective.split() if word]
@@ -340,6 +444,16 @@ class OrchestrationEngine:
         return " ".join(words[:6]).strip().capitalize()
 
     def _specialist_for_step(self, intent: str, objective: str) -> str:
+        by_intent = {
+            "plan": "Planner",
+            "research": "Research Specialist",
+            "build": "Builder Specialist",
+            "memory": "Memory Steward",
+            "review": "Critic / Evaluator",
+            "operations": "Operations / Scheduler",
+        }
+        if intent in by_intent:
+            return by_intent[intent]
         lower = f"{intent} {objective}".lower()
         for keywords, specialist in SPECIALIST_BY_KEYWORD:
             if any(keyword in lower for keyword in keywords):

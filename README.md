@@ -2,23 +2,26 @@
 
 Gnosys is a desktop-native, chat-first agent IDE and operating console focused on durable memory, bounded multi-agent execution, inspectable automation, and local-first persistence.
 
-The repository currently contains a working product scaffold with implemented foundation layers:
+The repository currently contains a working operational-core build with implemented foundation layers:
 
-- desktop console shell
+- desktop console shell with dedicated section workspaces
 - FastAPI backend runtime
 - SQLite persistence and event log
 - memory retrieval and consolidation
 - orchestration and worker spawning
-- tasks, projects, agents, skills, and schedules CRUD
+- tasks, projects, agents, skills, and schedules operational surfaces
 - autonomy and approval controls
 - diagnostics replay and memory review workflows
+- schedule daemon, retry guardrails, deferred backoff, and a scheduler service foundation
+- project workspace folders and project threads
+- standalone chat sessions with durable identity files
 
 ## Current stage
 
-The project is past the initial scaffold phase and is now in the operational core stage.
+The project is past the initial scaffold phase and Phase 2 is complete.
 
-- implemented: core workspace, persistence, memory, orchestration, policy controls, CRUD, and diagnostics
-- in progress: schedule automation, memory governance, skill lifecycle, and richer replay analysis
+- implemented: core workspace, persistence, memory, orchestration, policy controls, schedule automation maturity, context-aware diagnostics, and dedicated desktop section surfaces
+- in progress: project-thread productivity flow, file and attachment routing, main-agent identity behavior, and deeper memory governance
 - planned: advanced memory intelligence, learned skills, formal evaluation, and deeper tool execution
 
 ## Running locally
@@ -33,10 +36,22 @@ From the repository root:
 
 `npm run dev` starts the desktop app and backend together.
 
+Recommended validation flow:
+
+1. run `npm run dev`
+2. open the desktop shell and verify:
+   - `Chat` can create and switch standalone sessions
+   - `Projects` can create a project thread and show its workspace path
+   - `Sessions` can filter diagnostics by project, thread, and chat session
+   - `Scheduled` shows linked run context in history and recovery
+3. run `npm run check`
+4. run `npm run build`
+5. run `npm run test:backend`
+
 ## Repository layout
 
 - `apps/desktop/` - React desktop shell and console UI
-- `apps/backend/` - FastAPI backend, persistence, policy, memory, and orchestration
+- `apps/backend/` - FastAPI backend, persistence, policy, memory, orchestration, routers, and services
 - `packages/shared/` - shared domain types and seed data
 - `docs/` - product, architecture, roadmap, and status documentation
 
@@ -44,9 +59,11 @@ From the repository root:
 
 - [docs/INDEX.md](docs/INDEX.md)
 - [docs/IMPLEMENTATION-STATUS.md](docs/IMPLEMENTATION-STATUS.md)
+- [docs/DELIVERY-PLAN.md](docs/DELIVERY-PLAN.md)
 - [docs/PRD.md](docs/PRD.md)
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - [docs/ROADMAP.md](docs/ROADMAP.md)
+- [docs/CODEX_AUDIT_AND_PLAN.md](docs/CODEX_AUDIT_AND_PLAN.md)
 - [docs/GNOSYS_AUDIT_REPORT.md](docs/GNOSYS_AUDIT_REPORT.md)
 - [docs/REPOSITORY-OVERVIEW.md](docs/REPOSITORY-OVERVIEW.md)
 - [CONTRIBUTING.md](CONTRIBUTING.md)
@@ -64,8 +81,8 @@ From the repository root:
 
 The next layers to deepen are:
 
-1. schedule daemon and retry automation
-2. memory governance and promotion rules
-3. skill authoring, testing, and rollback
-4. richer diagnostics replay and diffing
-5. formal evaluation and regression benchmarks
+1. turn project threads into fuller productivity flows with explicit file and attachment routing
+2. deepen main-chat session identity and self-learning behavior around `AGENT.md`, `SOUL.md`, `IDENTITY.md`, and `HEARTBEAT.md`
+3. remove the remaining legacy fallback shell from the desktop and finish the section-first composition cleanup
+4. deepen memory governance and promotion rules
+5. extend diagnostics into richer historical analysis and diffing

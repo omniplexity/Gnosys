@@ -8,6 +8,7 @@ Gnosys is an operational-core desktop agent platform with implemented persistenc
 
 - [README.md](../README.md) - repository overview and quick start
 - [IMPLEMENTATION-STATUS.md](./IMPLEMENTATION-STATUS.md) - current implementation stage and gaps
+- [DELIVERY-PLAN.md](./DELIVERY-PLAN.md) - phased near-term backlog and execution order
 - [PRD.md](./PRD.md) - product goals and requirements
 - [ARCHITECTURE.md](./ARCHITECTURE.md) - subsystem architecture and implementation mapping
 - [ROADMAP.md](./ROADMAP.md) - completed phases and next build layers
@@ -30,4 +31,4 @@ Gnosys is an operational-core desktop agent platform with implemented persistenc
 
 ## Current stage in one line
 
-The foundation is built, the control plane is working, and the next work is to mature automation, governance, diagnostics, and learning systems.
+Phase 2 is complete: the control plane, scheduling maturity, context-aware diagnostics, project threads, and standalone chat sessions are live, and the next work is deeper project/session behavior on top of that core.

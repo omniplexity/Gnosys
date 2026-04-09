@@ -6,16 +6,12 @@ All notable changes to Gnosys will be documented here.
 
 ### Added
 
-- Root workspace scaffold with npm workspaces
-- Desktop console app scaffold in `apps/desktop/`
-- Python backend scaffold in `apps/backend/`
-- Shared domain package in `packages/shared/`
-- Updated repository and documentation structure
+- Delivery plan in `docs/DELIVERY-PLAN.md`
 
 ### Changed
 
-- Reframed the repository from an archive into an active scaffold
-- Replaced the old plugin-only layout with a modular foundation for future build-out
+- Updated core docs to reflect the current state as an operational core with incomplete maturity systems
+- Aligned roadmap and implementation status around contract stabilization, scheduling maturity, desktop modularization, and governance depth
 
 ## [0.1.0] - 2026-04-06
 

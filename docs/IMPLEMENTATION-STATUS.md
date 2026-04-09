@@ -1,261 +1,206 @@
 # Gnosys Implementation Status
 
-Generated: 2026-04-06
+Generated: 2026-04-09
 
 ## Executive summary
 
-Gnosys is no longer just a scaffold. The repository now contains a working local-first product core with:
+Gnosys is now in the early product phase of the "master-agent workstation" direction.
 
-- a desktop chat/workspace shell
-- a FastAPI backend
-- SQLite persistence
-- an event log
-- layered memory retrieval and consolidation
-- orchestration and bounded worker spawning
-- tasks, projects, agents, skills, and schedules CRUD
-- autonomy and approval controls, including `Full Access` and `YOLO`
-- replay diagnostics
-- memory review workflows
+The repo is no longer best described as a broad console scaffold. It now has:
 
-The current stage is best described as the operational core stage.
+- a working local-first backend control plane
+- persistent chat sessions with durable message history
+- a master-agent send/respond flow
+- specialist delegation metadata and bounded worker spawning
+- session reflection, daily memory rollups, and governed identity proposals
+- routed chat attachments and persistent personal-session file handling
+- a darker default desktop shell with a more deliberate product surface
 
-- the foundation is built
-- the control plane is working
-- the next work is about hardening and deepening the product
-- advanced intelligence and evaluation layers are still incomplete
+The product is still early. The most mature layers are persistence, orchestration records, memory primitives, and session continuity. The least mature layers are reusable skill learning, memory browsing UX, and the extensibility/tool contract.
 
-## Implementation stage map
+## Milestone status
 
-### Stage 0 - Scaffold
+### v0.0.1 - Real master chat
 
-Status: complete.
+Status: implemented.
 
-This stage covered repository setup, workspace structure, shared types, and the initial desktop/backend split.
+What is live:
 
-### Stage 1 - Persistence and state
+- persistent chat messages in SQLite
+- session send/respond endpoint
+- direct-answer vs bounded-work behavior from chat
+- session identity files loaded as runtime context
+- chat thread rendered from canonical session history
 
-Status: complete.
+### v0.0.2 - Master agent execution loop
 
-This stage added:
+Status: implemented at the first operational level.
 
-- SQLite-backed state
-- append-only event logging
-- workspace snapshot APIs
-- persistent tasks, projects, agents, skills, schedules, memory items, runs, and approvals
+What is live:
 
-### Stage 2 - Memory core
+- master-agent decision record on orchestration responses
+- intent classification and structured step records
+- fixed specialist roster
+- delegation synthesis surfaced in-thread and in API responses
+- bounded worker spawning still enforced
 
-Status: complete at the foundation level, partial at the governance level.
+Remaining gap:
 
-This stage added:
+- the specialist system is still heuristic rather than capability-backed
 
-- active, episodic, semantic, procedural, and workspace memory layers
-- project-aware retrieval
-- confidence and freshness scoring
-- candidate, validated, and archived memory states
-- memory review, promotion, and archiving
+### v0.0.3 - Self-learning session core
 
-Remaining gaps:
+Status: implemented at the first governed level.
 
-- clearer promotion rules and review heuristics
-- contradiction resolution workflows
-- explicit forgetting and pinning UX
-- memory regression tests and evaluation benchmarks
+What is live:
 
-### Stage 3 - Orchestration and agents
+- session reflections
+- candidate memory generation from reflections
+- daily memory rollups
+- governed identity proposals for `IDENTITY.md` and `SOUL.md`
+- automatic reflection after meaningful session activity
 
-Status: complete at the foundation level, partial at the autonomy level.
+Remaining gap:
 
-This stage added:
+- proposals are inspectable but not yet editable/applyable through a dedicated UI
 
-- a persistent orchestrator
-- persistent specialist roles
-- bounded worker spawning
-- recursion and child-count limits
-- task decomposition and task-run tracking
-- agent-run trees
-- approval gating for sensitive work
+### v0.0.4 - Project/thread productivity foundation
 
-Remaining gaps:
+Status: partially implemented, with the chat model intentionally narrowed.
 
-- richer critic/reviewer loops
-- deeper parallel execution
-- more visible agent tree inspection and control
-- specialist-specific memory policies and routing heuristics
+What is live:
 
-### Stage 4 - CRUD workspace
+- chat attachments persisted and routed into context directories
+- explicit backend support for `personal`, `project`, and `project-thread` context modes
+- task runs can inherit project and project-thread context from chat sends
+- desktop plus-button uploads now work for the personal chat flow
 
-Status: complete for core entities.
+Important product decision:
 
-This stage added:
+- the primary chat surface is now intentionally fixed to the personal persistent-presence model
+- project and project-thread context routing remains available in the backend for future non-chat or secondary workflows
 
-- list/create/update/delete flows for tasks, projects, agents, skills, and schedules
-- desktop forms for core operational entities
-- shared types and backend persistence for each entity family
+Remaining gap:
 
-Remaining gaps:
+- project/thread execution UX has not yet been promoted into a first-class product workflow outside the personal chat surface
 
-- bulk edit and multi-select workflows
-- richer validation and templates
-- entity history and audit drill-downs
+## Product state by area
 
-### Stage 5 - Policy and control plane
+### Personal chat
 
-Status: complete at the baseline level, partial at the UX level.
+Status: strong relative to the rest of the product.
 
-This stage added:
+The chat section is now the clearest product center:
 
-- Manual, Supervised, Autonomous, and Full Access modes
-- `YOLO` alias support
-- kill switch enforcement
-- approval requests and replay execution
-- project-scoped and entity-scoped policy overrides
+- persistent thread
+- personal continuity
+- session memory generation
+- attachment support
+- minimal composer
 
-Remaining gaps:
+### Memory system
 
-- more explicit risk classification
-- project policy inheritance editor
-- richer approval reasons and remediation details
-- stronger policy visualization in the UI
+Status: structurally strong, product UX still incomplete.
 
-### Stage 6 - Scheduling and diagnostics
+Live now:
 
-Status: partial.
+- layered retrieval
+- review queue
+- contradiction detection
+- promotion/archive/pin/forget flows
+- session reflection output and daily memory rollups
 
-This stage added:
+Still missing:
 
-- schedule CRUD
-- schedule execution
-- approval policy and failure policy fields
-- retry-once behavior
-- replay timelines and comparison snapshots
-
-Remaining gaps:
-
-- always-on schedule daemon
-- stronger recurring execution management
-- failure alerting and notifications
-- diffing across agent output, logs, and state transitions
-- run replay search and filtering
-
-## What is implemented now
-
-### Desktop shell
-
-Implemented.
-
-The desktop app already exposes:
-
-- chat and task interaction
-- navigation for tasks, projects, agents, skills, scheduled, sessions, and settings
-- a contextual inspector
-- a diagnostics drawer
-- policy controls
-- CRUD surfaces
-- replay and memory review panels
-
-### Persistence
-
-Implemented.
-
-The backend persists:
-
-- workspace state
-- tasks
-- projects
-- agents
-- skills
-- schedules
-- memory items
-- task runs
-- agent runs
-- schedule runs
-- approval requests
-- entity policies
-- events
-
-### Memory
-
-Implemented at the core layer.
-
-The system already supports:
-
-- layered memory storage
-- retrieval with role and project bias
-- metadata and provenance
-- consolidation
-- review and promotion
+- dedicated memory browser experience
+- clearer day-by-day and long-term browsing surfaces
+- more advanced retrieval evaluation
 
 ### Orchestration
 
-Implemented at the core layer.
+Status: strong foundation, shallow intelligence depth.
 
-The system already supports:
+Live now:
 
-- task launch
-- specialist selection
-- worker spawning
+- task runs
+- agent runs
+- specialist delegation
+- bounded worker spawning
+- replay and diagnostics
 - approval gating
-- run persistence
 
-### Safety and policy
+Still missing:
 
-Implemented at the baseline layer.
+- richer specialist capabilities
+- stronger synthesis quality
+- skill-backed execution instead of mostly heuristic delegation
 
-The system already supports:
+### Scheduling
 
-- autonomy modes
-- approval requests
-- kill switch
-- per-entity policy overrides
-- replaying approved actions
+Status: stronger foundation after backend decomposition.
 
-## What still needs to be built
+Live now:
 
-### High priority gaps
+- persisted schedules and schedule runs
+- manual run-now and retry behavior
+- approval-gated schedules
+- scheduler service for dispatch, retry, window advancement, and approval queuing
+- runner/daemon abstraction separated from schedule lifecycle logic
 
-1. schedule daemon and background recurrence
-2. memory promotion rules and contradiction handling
-3. skill lifecycle beyond CRUD
-4. richer replay analysis and diagnostics
-5. project policy inheritance editor and defaults UI
+Still missing:
 
-### Medium priority gaps
+- richer recurring execution semantics
+- more durable always-on background execution expectations
+- deeper policy/governance semantics around long-running automation
 
-1. learned skill drafting and promotion
-2. better agent tree controls and visibility
-3. output diffing across runs
-4. policy dashboards and risk labels
-5. stronger validation and bulk workflows in CRUD
+### Skills
 
-### Lower priority gaps
+Status: foundational only.
 
-1. memory graph and relation-aware retrieval
-2. formal evaluation suites
-3. browser automation and desktop automation integrations
-4. skill marketplace or import/export
-5. deeper personalization and collaborator modeling
+Live now:
 
-## Stage assessment
+- skill entities
+- lifecycle records
+- tests, promotion, rollback foundations
 
-If the product goals are broken into maturity levels, Gnosys is currently here:
+Still missing:
 
-- not a concept: the product exists as a working application
-- not merely a scaffold: core workflows run end-to-end
-- not yet fully mature: intelligence, scheduling, and learning systems still need depth
+- real learned-skill extraction from repeated work
+- recursive improvement loop
+- clearer invocation contract inside orchestration
 
-The most accurate label is:
+### Desktop UX
 
-- operational core complete
-- advanced automation in progress
-- adaptive intelligence still incomplete
+Status: materially better, still transitional.
 
-## Practical next step
+Live now:
 
-The next build sequence should focus on:
+- darker default shell
+- stronger chat presentation
+- Lucide icon usage in the primary chat surface
 
-1. schedule daemon and failure handling
-2. memory governance and promotion policy
-3. skill testing and rollout
-4. richer diagnostics and replay
-5. evaluation and regression harnesses
+Still missing:
+
+- dedicated personal-session switching/new-session UX
+- memory browser UI
+- cleaner composition boundaries in `App.tsx`
+
+## Current label
+
+The most accurate current label is:
+
+- operational core: complete
+- persistent master chat: live
+- self-learning session core: live at first governed level
+- project/thread productivity: backend foundations present, frontend productization still partial
+- adaptive capability system: not yet mature
+
+## Recommended next steps
+
+The next implementation sequence should be:
+
+1. `v0.0.5` skill learning and recursive improvement
+2. `v0.0.6` memory browser and memory operations UX
+3. personal session management UX for the chat surface
+4. `v0.0.7` extensibility/tool registry
+5. `v0.1.0` integration pass to make the whole product feel like one workstation
